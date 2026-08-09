@@ -14,8 +14,13 @@
   var koVoice = null;
   var unlocked = false;
 
+  /* 기기마다 언어 표기가 제각각이다 — ko-KR, ko_KR, kor, 빈 문자열에 이름만 Korean인 것도 있다.
+     그래서 언어 코드와 이름을 함께 본다. */
   function koVoices() {
-    return voices.filter(function (v) { return /^ko/i.test(v.lang); });
+    return voices.filter(function (v) {
+      return /(^|[^a-z])ko([^a-z]|$)|^kor/i.test(String(v.lang || '')) ||
+        /korean|한국/i.test(String(v.name || ''));
+    });
   }
 
   function loadVoices() {
@@ -234,6 +239,17 @@
 
   /* 소리가 안 날 때 무엇이 문제인지 알려 준다.
      갤럭시탭에서 한국어 음성 데이터가 없으면 speak가 조용히 실패한다. */
+  // 기기가 알려 준 목소리 목록을 사람이 읽을 수 있게 적는다.
+  function voiceList() {
+    if (!voices.length) return '기기가 목소리 목록을 주지 않았어요.';
+    return '이 기기의 목소리 ' + voices.length + '개 — ' +
+      voices.slice(0, 8).map(function (v) {
+        return (v.name || '이름없음') + '(' + (v.lang || '언어없음') + ')';
+      }).join(', ') + (voices.length > 8 ? ' 외' : '');
+  }
+
+  /* 목록에 한국어가 없어도 일단 소리를 내 본다.
+     엔진이 목소리를 목록에 안 내놓고도 읽어 주는 기기가 있기 때문이다. */
   function testSound(report) {
     if (!hasTTS) {
       report('이 브라우저는 소리 읽어 주기를 지원하지 않아요. 크롬으로 열어 보세요.', false);
@@ -241,31 +257,32 @@
     }
     loadVoices();
     var ko = koVoices();
-    if (!voices.length) {
-      report('기기에서 목소리 목록을 아직 못 받았어요. 잠시 뒤 다시 눌러 보세요.', false);
-      return;
-    }
-    if (!ko.length) {
-      report('이 기기에 한국어 목소리가 없어요. 기기 설정 > 일반 > 접근성 > ' +
-        '글자 음성 변환에서 한국어를 내려받거나, 기본 엔진을 「Google 음성 인식 및 합성」으로 바꿔 주세요.', false);
-      return;
-    }
+    var withVoice = ko.length > 0;
     try { synth.cancel(); } catch (e) { /* 무시 */ }
-    var heard = false;
+
     setTimeout(function () {
-      speakOnce('소리가 잘 들리나요', true, function (ok) {
+      speakOnce('소리가 잘 들리나요', withVoice, function (ok) {
         if (ok === false) {
-          report('한국어 목소리(' + ko[0].name + ')는 있는데 소리가 나오지 않아요. ' +
-            '기기 설정에서 기본 음성 엔진을 「Google 음성 인식 및 합성」으로 바꿔 보세요. ' +
-            '미디어 볼륨도 확인해 주세요.', false);
-        } else {
-          heard = true;
+          if (withVoice) {
+            report('한국어 목소리(' + ko[0].name + ')는 있는데 소리가 나오지 않아요. ' +
+              '미디어 볼륨을 올려 보시고, 그래도 안 되면 기기 설정에서 기본 음성 엔진을 ' +
+              '「Google 음성 인식 및 합성」으로 바꿔 주세요.\n' + voiceList(), false);
+          } else {
+            report('크롬이 한국어 목소리를 못 찾고, 소리도 나지 않아요. ' +
+              '삼성 음성은 크롬에서 안 잡히는 경우가 많습니다. ' +
+              '플레이스토어에서 「Google 음성 인식 및 합성」을 설치한 뒤, ' +
+              '설정 > 일반 > 접근성 > 글자 음성 변환에서 기본 엔진을 Google로 바꾸고 ' +
+              '한국어를 내려받아 주세요.\n' + voiceList(), false);
+          }
+        } else if (withVoice) {
           report('지금 「소리가 잘 들리나요」라고 말했어요. 들렸다면 정상입니다. ' +
             '(쓰는 목소리: ' + ko[0].name + ')', true);
+        } else {
+          report('목록에 한국어 목소리는 없지만 소리는 나가고 있어요. ' +
+            '「소리가 잘 들리나요」가 들렸다면 그대로 쓰셔도 됩니다. ' +
+            '안 들렸다면 미디어 볼륨을 확인해 주세요.\n' + voiceList(), true);
         }
-      }, function () {
-        if (!heard) return;
-      });
+      }, function () { /* 끝났을 때 할 일 없음 */ });
     }, 80);
   }
 

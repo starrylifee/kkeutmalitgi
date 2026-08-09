@@ -76,7 +76,7 @@ body:not([data-state="setup"]) .game{display:grid}
 .btn-test{margin-top:-10px;font-size:.92em;min-height:48px;padding:12px}
 .setup-note{
   font-size:.84em;color:var(--ink-3);text-align:center;min-height:1.2em;
-  line-height:1.6;padding:0 4px;
+  line-height:1.6;padding:0 4px;white-space:pre-line;word-break:keep-all;
 }
 .setup-note.bad{color:var(--warn);font-weight:500}
 
