@@ -42,7 +42,16 @@ function norm(raw) {
   return String(raw == null ? '' : raw).normalize('NFC').replace(/[^가-힣]/g, '');
 }
 
-// AI 후보 재검증 — 시작 글자·길이·중복·뜻풀이 유무를 서버가 직접 확인한다.
+// 이름씨가 아닌 품사. 모델이 스스로 붙인 품사표를 서버가 그대로 믿고 거른다.
+const BAD_POS = /움직씨|동사|그림씨|형용사|어찌씨|부사|매김씨|관형사|고유|없는|신조|줄임/;
+
+function isNoun(p) {
+  const s = String(p || '');
+  if (!s) return true;            // 품사를 안 붙였으면 다른 조건으로만 거른다
+  return !BAD_POS.test(s);
+}
+
+// AI 후보 재검증 — 시작 글자·길이·중복·품사·뜻풀이를 서버가 직접 확인한다.
 function pickCandidate(cands, allowed, usedSet, deadEnd, avoidDeadEnd) {
   if (!Array.isArray(cands)) return null;
   for (const c of cands) {
@@ -51,14 +60,16 @@ function pickCandidate(cands, allowed, usedSet, deadEnd, avoidDeadEnd) {
     if (w.length < 2 || w.length > 5) continue;
     if (allowed.length && allowed.indexOf(w.charAt(0)) === -1) continue;
     if (usedSet.has(w)) continue;
-    if (!m) continue; // 뜻을 못 쓴 낱말은 지어낸 말로 본다
+    if (!m) continue;                       // 뜻을 못 쓴 낱말은 지어낸 말로 본다
+    if (!isNoun(c && c.p)) continue;        // 움직씨·그림씨는 끝말잇기 낱말이 아니다
+    if (w.length >= 3 && w.charAt(w.length - 1) === '다') continue; // 「오르다」류 기본형
     if (avoidDeadEnd && deadEnd.indexOf(w.charAt(w.length - 1)) !== -1) continue;
     return { w, m: m.slice(0, 60) };
   }
   return null;
 }
 
-async function askSolar(prompt, maxTokens, temperature, signal) {
+async function askSolar(prompt, maxTokens, temperature) {
   const r = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
@@ -70,8 +81,7 @@ async function askSolar(prompt, maxTokens, temperature, signal) {
       messages: [{ role: 'user', content: prompt }],
       temperature,
       max_tokens: maxTokens
-    }),
-    signal
+    })
   });
   if (!r.ok) {
     const t = await r.text();
@@ -91,10 +101,11 @@ function repairJson(txt) {
 }
 
 // JSON 한 덩어리를 뽑아낸다. 실패하면 온도를 낮춰 한 번만 더 시도한다.
-async function askJson(prompt, maxTokens, deadline) {
+async function askJson(prompt, maxTokens, deadline, temps) {
+  const T = temps || [0.8, 0.2];
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0 && Date.now() > deadline - 7000) break; // 남은 시간이 없으면 포기
-    const raw = await askSolar(prompt, maxTokens, attempt === 0 ? 0.8 : 0.2);
+    const raw = await askSolar(prompt, maxTokens, T[attempt]);
     const s = raw.indexOf('{');
     const e = raw.lastIndexOf('}');
     if (s !== -1 && e > s) {
@@ -106,36 +117,67 @@ async function askJson(prompt, maxTokens, deadline) {
   return null;
 }
 
-function turnPrompt({ word, used, allowed, level, deadEnd }) {
-  var H = headsText(allowed);
-  return `당신은 초등학교 국어 시간에 학생과 끝말잇기를 하는 선생님입니다. JSON으로만 대답합니다.
+/* 판정과 낱말 생성은 성격이 정반대다(판정은 일관되어야 하고 생성은 다양해야 한다).
+   그래서 프롬프트를 나누고 온도를 달리해 두 호출을 동시에 보낸다. 지연은 한 번과 같다. */
+function judgePrompt({ word }) {
+  return `당신은 초등학교 국어 선생님입니다.
+학생이 끝말잇기에서 낸 낱말을 쓸 수 있는지 판정합니다. JSON으로만 대답합니다.
 
 ## 학생이 낸 낱말
 ${word}
 
+## 판정 순서 — 차례대로 따지세요
+1. 먼저 이 말이 국어사전에 표제어로 실려 있는지 확인하세요.
+   실려 있지 않으면 pos는 '없는말'이고 valid는 false입니다.
+   인터넷 유행어·줄임말·신조어(킹받네, 별다줄, 갑분싸, 인싸)는 모두 여기에 듭니다.
+2. 실려 있다면 품사를 정하세요. 이름씨(명사)가 아니면 valid는 false입니다.
+   · 움직씨(동사) — 먹다, 가다, 뛰다, 이어붙이다
+   · 그림씨(형용사) — 빠르다, 예쁘다, 큼직하다
+   · 어찌씨(부사) — 살짝, 성큼, 방금
+3. 특정한 하나의 대상만 가리키는 이름이면 pos는 '고유명사'이고 valid는 false입니다.
+   · 땅 이름 — 서울, 부산, 한국, 제주
+   · 회사·상표 이름 — 삼성, 카카오, 신라면
+   · 사람 이름, 책·노래·영화 제목
+   여러 사람이나 여러 대상에 두루 쓰는 말은 고유명사가 아닙니다.
+   선생님, 어머님, 사장님, 아저씨처럼 누구에게나 쓰는 말은 이름씨입니다.
+4. 위 어느 것에도 걸리지 않으면 valid는 true입니다.
+   초등학생이 흔히 쓰는 낱말은 너그럽게 인정하세요.
+   뜻이 여러 개인 낱말은 그중 하나라도 보통 이름씨이면 true입니다.
+
+## 출력
+- pos: 그 낱말의 품사를 한 낱말로. 이름씨 / 움직씨 / 그림씨 / 어찌씨 / 고유명사 / 없는말 중 하나.
+- valid: 위 순서에 따른 결과.
+- say: 학생에게 건네는 존댓말 한 문장.
+  인정하면 그 낱말의 뜻을 짧고 쉽게 알려 주고,
+  인정하지 않으면 왜 안 되는지 부드럽게 설명하세요. 혼내지 마세요.
+
+{"pos":"품사","valid":true 또는 false,"say":"한 문장"}
+- 문자열 안에서 큰따옴표(")를 쓰지 마세요. 인용이 필요하면 「」를 쓰세요.
+- JSON 밖에는 아무것도 쓰지 마세요.`;
+}
+
+function genPrompt({ used, allowed, level, deadEnd }) {
+  var H = headsText(allowed);
+  return `당신은 초등학교 국어 시간에 학생과 끝말잇기를 하는 선생님입니다. JSON으로만 대답합니다.
+당신이 이어갈 낱말 후보 세 개를 만드세요.
+
 ## 이미 나온 낱말
 ${used.length ? used.join(', ') : '없음'}
 
-## 할 일 1 — 학생 낱말 판정 (valid, say)
-- 국립국어원 표준국어대사전에 표제어로 실려 있는 보통명사이면 valid는 true입니다.
-- 회사 이름, 지역 이름, 사람 이름 같은 고유명사와 줄임말, 신조어, 비속어는 valid를 false로 하세요.
-- 조금이라도 자신이 없으면 false로 하세요. 모르는 낱말을 있다고 하지 마세요.
-- say는 학생에게 건네는 존댓말 한 문장입니다. 인정하면 그 낱말의 뜻을 짧고 쉽게 알려 주고,
-  인정하지 않으면 왜 안 되는지 부드럽게 설명하세요. 혼내지 마세요.
-
-## 할 일 2 — 당신이 이어갈 낱말 세 개 만들기 (candidates)
+## 규칙
 **첫 글자 규칙: 세 낱말 모두 ${H}(으)로 시작해야 합니다. 다른 글자로 시작하면 안 됩니다.**
-- 학생 낱말을 인정하지 않았더라도 세 개를 반드시 만드세요.
 ${WORD_RULES}
 - 난이도: ${LEVEL[level] || LEVEL.normal}
 - '이미 나온 낱말'과 겹치면 안 됩니다.
 - 다음 글자로 끝나는 낱말은 피하세요(학생이 이어가기 어렵습니다): ${deadEnd.join(' ')}
-- ${H}(으)로 시작하는 낱말이 정말 하나도 없으면 candidates를 빈 배열로 두고 stuck을 true로 하세요.
+- **${H}(으)로 시작하는 낱말이 국어사전에 정말 없으면, 억지로 지어내지 말고
+  candidates를 빈 배열로 두고 stuck을 true로 하세요. 지어낸 낱말은 절대 쓰면 안 됩니다.**
 
 ## 출력 형식
-{"valid":true 또는 false,"say":"한 문장","candidates":[{"w":"낱말","m":"뜻"},{"w":"낱말","m":"뜻"},{"w":"낱말","m":"뜻"}],"stuck":false}${JSON_NOTE}
+{"candidates":[{"w":"낱말","p":"품사","m":"뜻"},{"w":"낱말","p":"품사","m":"뜻"},{"w":"낱말","p":"품사","m":"뜻"}],"stuck":false}
+- p에는 그 낱말의 품사를 이름씨 / 움직씨 / 그림씨 / 어찌씨 중 하나로 정직하게 적으세요.${JSON_NOTE}
 
-다시 확인하세요: candidates의 세 낱말은 모두 ${H}(으)로 시작하는 이름씨여야 합니다.`;
+다시 확인하세요: candidates의 세 낱말은 모두 ${H}(으)로 시작하는, 국어사전에 실제로 있는 이름씨여야 합니다.`;
 }
 
 function startPrompt({ level, used, deadEnd }) {
@@ -167,15 +209,18 @@ ${H}
 ${used.length ? used.join(', ') : '없음'}
 
 ## 규칙
-- ${H}(으)로 시작하는 쉬운 낱말을 하나 고르세요(word). '이미 나온 낱말'은 안 됩니다.
+**${H}(으)로 시작하는 쉬운 낱말 후보 세 개를 고르세요. 다른 글자로 시작하면 안 됩니다.**
 ${WORD_RULES}
 - 난이도: ${LEVEL[level] || LEVEL.normal}
-- step1: 그 낱말이 무엇인지 알려 주는 수수께끼 한 문장. 낱말을 직접 말하지 마세요.
-- step2: 글자 수와 첫 글자를 알려 주는 문장.
-- step3: 정답을 알려 주는 문장. 낱말과 뜻을 함께 쓰세요.
+- '이미 나온 낱말'은 안 됩니다.
+- 후보마다 힌트를 세 단계로 붙이세요.
+  · s1: 그 낱말이 무엇인지 알려 주는 수수께끼 한 문장. 낱말을 직접 말하지 마세요.
+  · s2: 글자 수와 첫 글자를 알려 주는 문장.
+  · s3: 정답을 알려 주는 문장. 낱말과 뜻을 함께 쓰세요.
+- ${H}(으)로 시작하는 낱말이 국어사전에 정말 없으면 candidates를 빈 배열로 두세요.
 
 ## 출력 형식
-{"word":"낱말","step1":"한 문장","step2":"한 문장","step3":"한 문장"}${JSON_NOTE}`;
+{"candidates":[{"w":"낱말","p":"품사","m":"뜻","s1":"한 문장","s2":"한 문장","s3":"한 문장"},{"w":"낱말","p":"품사","m":"뜻","s1":"...","s2":"...","s3":"..."},{"w":"낱말","p":"품사","m":"뜻","s1":"...","s2":"...","s3":"..."}]}${JSON_NOTE}`;
 }
 
 export default async function handler(req, res) {
@@ -218,15 +263,17 @@ export default async function handler(req, res) {
 
     if (mode === 'hint') {
       if (!allowed.length) return res.status(400).json({ error: '시작 글자가 없습니다.' });
-      const d = await askJson(hintPrompt({ allowed, used, level }), 450, deadline);
+      const d = await askJson(hintPrompt({ allowed, used, level }), 700, deadline, [0.6, 0.2]);
       if (!d) throw new Error('힌트를 만들지 못했습니다.');
-      const w = norm(d.word);
-      const okWord = w.length >= 2 && w.length <= 5 && allowed.indexOf(w.charAt(0)) !== -1 && !usedSet.has(w);
+      // 낱말 생성과 같은 잣대로 후보를 거른다.
+      const cands = Array.isArray(d.candidates) ? d.candidates : [];
+      const pick = pickCandidate(cands, allowed, usedSet, [], false);
+      const src = pick ? cands.find((c) => norm(c && c.w) === pick.w) || {} : {};
       return res.status(200).json({
-        word: okWord ? w : '',
-        step1: String(d.step1 || '').slice(0, 120),
-        step2: String(d.step2 || '').slice(0, 120),
-        step3: String(d.step3 || '').slice(0, 160)
+        word: pick ? pick.w : '',
+        step1: String(src.s1 || '').slice(0, 120),
+        step2: String(src.s2 || '').slice(0, 120),
+        step3: String(src.s3 || ('「' + (pick ? pick.w : '') + '」예요. ' + (pick ? pick.m : ''))).slice(0, 160)
       });
     }
 
@@ -235,21 +282,43 @@ export default async function handler(req, res) {
     if (!word) return res.status(400).json({ error: '낱말이 비어 있습니다.' });
     if (!allowed.length) return res.status(400).json({ error: '시작 글자가 없습니다.' });
 
-    const d = await askJson(turnPrompt({ word, used, allowed, level, deadEnd }), 700, deadline);
-    if (!d) throw new Error('AI 응답을 읽지 못했습니다.');
+    // 방금 학생이 낸 낱말도 이미 나온 것으로 친다 — AI가 그대로 따라 내는 걸 막는다.
+    usedSet.add(word);
+    used.push(word);
 
-    const valid = d.valid !== false;
+    // 판정(낮은 온도)과 낱말 생성(높은 온도)을 동시에 보낸다.
+    const [judge, gen] = await Promise.all([
+      askJson(judgePrompt({ word }), 320, deadline, [0.15, 0.05]).catch(() => null),
+      askJson(genPrompt({ used, allowed, level, deadEnd }), 520, deadline, [0.9, 0.4]).catch(() => null)
+    ]);
+
+    if (!judge && !gen) throw new Error('AI 응답을 읽지 못했습니다.');
+
+    /* 모델이 품사는 바르게 적어 놓고 valid만 true로 흘리는 경우가 있어,
+       품사를 최종 판단 근거로 삼는다. */
+    const pos = judge ? String(judge.pos || '').slice(0, 12) : '';
+    const posBad = !isNoun(pos);
+    const valid = judge ? judge.valid !== false && !posBad : true;
+
+    let say = String((judge && judge.say) || '').slice(0, 160);
+    if (posBad && judge && judge.valid !== false) {
+      // 모델의 설명이 판정과 어긋나므로 서버가 문장을 바꿔 준다.
+      say = '「' + word + '」는 ' + pos + '라서 끝말잇기에서는 쓸 수 없어요. 이름을 나타내는 낱말로 해 볼까요?';
+    }
+
     // 한방 낱말을 피하는 조건은 후보가 다 걸리면 풀어 준다 — 이어가는 게 우선이다.
-    const pick =
-      pickCandidate(d.candidates, allowed, usedSet, deadEnd, true) ||
-      pickCandidate(d.candidates, allowed, usedSet, deadEnd, false);
+    const pick = gen
+      ? (pickCandidate(gen.candidates, allowed, usedSet, deadEnd, true) ||
+         pickCandidate(gen.candidates, allowed, usedSet, deadEnd, false))
+      : null;
 
     return res.status(200).json({
       valid,
-      say: String(d.say || '').slice(0, 160),
+      pos,
+      say,
       aiWord: pick ? pick.w : '',
       aiMeaning: pick ? pick.m : '',
-      aiStuck: !pick || d.stuck === true
+      aiStuck: !pick || (gen && gen.stuck === true)
     });
   } catch (e) {
     return res.status(500).json({

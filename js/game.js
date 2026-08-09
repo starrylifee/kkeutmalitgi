@@ -254,22 +254,38 @@
     startTimer();
   }
 
-  function onAiStuck() {
+  function pushDivider(text) {
+    var d = document.createElement('p');
+    d.className = 'divider';
+    d.textContent = text;
+    el.chain.appendChild(d);
+    scrollChain();
+  }
+
+  /* 아무도 이을 수 없는 글자에 걸렸을 때. 승패가 없으니 새 낱말로 다시 이어 간다.
+     이미 나온 낱말은 그대로 기억해 두어 같은 낱말이 또 나오지 않게 한다. */
+  function restartChain(msg) {
     stopTimer();
-    var msg = '와, 이어갈 낱말이 없어요. 어려운 낱말을 냈네요! 새 낱말로 다시 시작할까요?';
     el.focusMsg.textContent = msg;
     toast(msg);
     SP.speak(msg, function () {
       setState(S.BOOTING);
+      pushDivider('새 낱말로 다시 시작');
+      el.focusMsg.textContent = 'AI가 새 낱말을 고르고 있어요';
       API.start({ level: settings.level, deadEnd: H.DEAD_END, used: Array.from(used) })
         .then(function (res) { playAiTurn(res.aiWord, res.aiMeaning); })
         .catch(function () {
-          setState(S.STUDENT);
-          el.focusMsg.textContent = '아무 낱말이나 먼저 말해 볼까요?';
           chain = [];
-          renderBadge();
+          setState(S.STUDENT);
+          el.badge.textContent = '?';
+          el.badgeAlt.textContent = '';
+          el.focusMsg.textContent = '아무 낱말이나 먼저 말해 볼까요?';
         });
     });
+  }
+
+  function onAiStuck() {
+    restartChain('와, 이어갈 낱말이 없어요. 어려운 낱말을 냈네요! 새 낱말로 다시 시작할게요.');
   }
 
   /* ── 낱말 제출 ───────────────────────────── */
@@ -383,6 +399,7 @@
 
     API.hint({ allowed: allowedHeads(), used: Array.from(used), level: settings.level })
       .then(function (res) {
+        if (!res.word) { offerRestart(); return; }
         hintData = res;
         hintStep = 1;
         el.hintBody.textContent = res.step1 || '음… 힌트를 못 만들었어요.';
@@ -395,7 +412,21 @@
       });
   }
 
+  // 이을 낱말이 아예 없는 글자에 걸린 경우 — 막다른 길을 만들지 않는다.
+  function offerRestart() {
+    var heads = allowedHeads();
+    hintStep = 99;
+    el.hintBody.textContent = '「' + heads[0] + '」(으)로 시작하는 낱말은 찾기가 아주 어려워요.\n어려운 낱말을 냈네요! 새 낱말로 다시 시작할까요?';
+    el.hintMore.disabled = false;
+    el.hintMore.textContent = '새 낱말로 다시 시작';
+  }
+
   function nextHint() {
+    if (hintStep === 99) {
+      closeHint();
+      restartChain('새 낱말로 다시 시작할게요.');
+      return;
+    }
     if (!hintData) return;
     if (hintStep === 1) {
       hintStep = 2;

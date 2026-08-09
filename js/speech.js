@@ -140,6 +140,14 @@
       rec.maxAlternatives = 3;
       gotResult = false;
 
+      // onerror 뒤에 onend가 또 오는 기기가 있어 안내가 두 번 뜨는 걸 막는다.
+      var errored = false;
+      var fail = function (code) {
+        if (errored) return;
+        errored = true;
+        onError(code);
+      };
+
       rec.onresult = function (e) {
         var interim = '', finalTx = '', alts = [];
         for (var i = e.resultIndex; i < e.results.length; i++) {
@@ -161,11 +169,11 @@
 
       rec.onerror = function (e) {
         var code = e && e.error;
-        if (code === 'not-allowed' || code === 'service-not-allowed') onError('not-allowed');
-        else if (code === 'no-speech') onError('no-speech');
-        else if (code === 'network') onError('network');
-        else if (code === 'aborted') { /* 사용자가 멈춘 것 — 조용히 넘어간다 */ }
-        else onError(code || 'unknown');
+        if (code === 'not-allowed' || code === 'service-not-allowed') fail('not-allowed');
+        else if (code === 'no-speech') fail('no-speech');
+        else if (code === 'network') fail('network');
+        else if (code === 'aborted') { errored = true; /* 사용자가 멈춘 것 */ }
+        else fail(code || 'unknown');
         stopListen();
       };
 
@@ -173,12 +181,12 @@
         listening = false;
         clearTimeout(hardStop);
         onStop();
-        if (!gotResult) onError('no-speech');
+        if (!gotResult) fail('no-speech');
       };
 
       try {
         rec.start();
-      } catch (e) { onError('start-failed'); return; }
+      } catch (e) { fail('start-failed'); return; }
 
       listening = true;
       onStart();
