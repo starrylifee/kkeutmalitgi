@@ -4,9 +4,10 @@
 AI 응답은 매번 조금씩 달라서 한 번 돌려서는 흔들림이 안 잡힌다.
 그래서 같은 케이스를 N번 반복하고 통과율로 본다.
 
-  python tests/banktest.py                 케이스마다 5회
-  python tests/banktest.py --runs 10       케이스마다 10회
-  python tests/banktest.py --only stuck    한 종류만
+  python tests/banktest.py                    케이스마다 5회
+  python tests/banktest.py --runs 10          케이스마다 10회
+  python tests/banktest.py --only stuck       한 종류만
+  python tests/banktest.py --level g1         학년 바꿔서
 """
 
 import argparse
@@ -46,11 +47,11 @@ def post(url, body, timeout=60):
         return {"error": str(e)}, time.time() - t0
 
 
-def run_once(url, case):
+def run_once(url, case, level):
     heads = case.get("heads") or [case["word"][-1]]
     d, ms = post(url, {
         "mode": "turn", "word": case["word"], "allowed": heads, "used": [],
-        "level": "normal", "dueum": True, "deadEnd": DEAD_END,
+        "level": level, "dueum": True, "deadEnd": DEAD_END,
     })
     if d.get("error"):
         return "오류", d.get("error", "")[:40], ms
@@ -69,7 +70,6 @@ def run_once(url, case):
     if kind == "stuck":
         return ("통과", "막힘", ms) if stuck else ("실패", f"지어냄?({ai})", ms)
 
-    # judge
     got = d.get("valid")
     if got is case["valid"]:
         return "통과", f"valid={got}", ms
@@ -82,6 +82,7 @@ def main():
     ap.add_argument("--runs", type=int, default=5, help="케이스마다 반복 횟수")
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--only", choices=["continue", "stuck", "judge"])
+    ap.add_argument("--level", default="g3", choices=["g1", "g3", "g5", "adult"])
     ap.add_argument("--pass-rate", type=float, default=0.8, help="이 비율 미만이면 문제로 본다")
     args = ap.parse_args()
 
@@ -89,7 +90,7 @@ def main():
     cases = [c for c in data["cases"] if not args.only or c["kind"] == args.only]
 
     label = {"continue": "이어가야 함", "stuck": "막혀야 함", "judge": "판정"}
-    print(f"대상: {args.url}")
+    print(f"대상: {args.url}  (난이도 {args.level})")
     print(f"케이스 {len(cases)}개 x {args.runs}회 = {len(cases) * args.runs}회 호출\n")
 
     jobs = [(c, i) for c in cases for i in range(args.runs)]
@@ -97,7 +98,7 @@ def main():
     lat = []
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        for (c, _), out in zip(jobs, ex.map(lambda j: run_once(args.url, j[0]), jobs)):
+        for (c, _), out in zip(jobs, ex.map(lambda j: run_once(args.url, j[0], args.level), jobs)):
             status, detail, ms = out
             results.setdefault(id(c), []).append((status, detail))
             lat.append(ms)

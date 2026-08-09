@@ -47,7 +47,8 @@
     toast: $('toast')
   };
 
-  var settings = { dueum: true, level: 'normal', time: 0 };
+  var settings = { dueum: true, level: 'g3', time: 0 };
+  var LEVELS = ['g1', 'g3', 'g5', 'adult'];
   var state = S.SETUP;
   var chain = [];          // {who:'me'|'ai', word, mean, pending, reject}
   var used = new Set();
@@ -66,6 +67,10 @@
       var raw = localStorage.getItem('kki-settings');
       if (raw) settings = Object.assign(settings, JSON.parse(raw));
     } catch (e) { /* 무시 */ }
+    // 예전에 저장된 easy/normal/hard 설정을 학년으로 옮긴다.
+    if (LEVELS.indexOf(settings.level) === -1) {
+      settings.level = { easy: 'g1', normal: 'g3', hard: 'g5' }[settings.level] || 'g3';
+    }
   }
   function saveSettings() {
     try { localStorage.setItem('kki-settings', JSON.stringify(settings)); } catch (e) { /* 무시 */ }
@@ -284,8 +289,12 @@
     });
   }
 
+  var LEVEL_NAME = { g1: '1~2학년', g3: '3~4학년', g5: '5~6학년', adult: '초6 이상' };
+
   function onAiStuck() {
-    restartChain('와, 이어갈 낱말이 없어요. 어려운 낱말을 냈네요! 새 낱말로 다시 시작할게요.');
+    // 사전에 낱말이 아예 없어서일 수도 있고, 그 학년에게 어려운 말뿐이어서일 수도 있다.
+    restartChain('제가 졌어요! ' + (LEVEL_NAME[settings.level] || '') +
+      '이 아는 낱말 중에는 이어갈 말이 생각나지 않아요. 새 낱말로 다시 시작할게요.');
   }
 
   /* ── 낱말 제출 ───────────────────────────── */
