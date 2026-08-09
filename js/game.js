@@ -123,6 +123,11 @@
     el.body.dataset.state = next;
   }
 
+  // 지옥에서는 힌트를 주지 않는다. 화면에서 버튼을 감추는 것도 CSS가 이걸 보고 한다.
+  function isHell() {
+    return settings.level === 'hell' || settings.level === 'inferno';
+  }
+
   function lastWord() {
     for (var i = chain.length - 1; i >= 0; i--) {
       if (!chain[i].reject && !chain[i].think) return chain[i].word;
@@ -212,6 +217,14 @@
   function resumeTimer() { timerPaused = false; }
 
   function onTimeout() {
+    if (isHell()) {
+      // 지옥에는 힌트가 없다. 시간은 다시 주되 도와주지는 않는다.
+      var m = '시간이 다 됐어요. 그래도 계속 생각해 보세요.';
+      toast(m, 'warn');
+      SP.speak(m);
+      startTimer();
+      return;
+    }
     toast('시간이 다 됐어요. 힌트를 볼까요?');
     SP.speak('시간이 다 됐어요. 힌트를 볼까요?');
     openHint();
@@ -223,6 +236,7 @@
     SP.unlockTTS();               // 사용자가 누른 이 순간에 반드시 한 번
     requestWakeLock();
 
+    el.body.dataset.level = settings.level;   // CSS가 지옥인지 보고 힌트 버튼을 감춘다
     chain = [];
     used = new Set();
     turns = 0;
@@ -672,7 +686,7 @@
     openModal('', [], true);
   });
   el.hintBtn.addEventListener('click', function () {
-    if (state !== S.STUDENT) return;
+    if (state !== S.STUDENT || isHell()) return;
     SP.stopSpeaking();
     openHint();
   });

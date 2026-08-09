@@ -212,6 +212,12 @@ body[data-state="judging"] .bar,
 body[data-state="booting"] .bar{pointer-events:none;opacity:.38}
 body[data-state="booting"] .focus .badge{color:var(--ink-3)}
 
+/* 지옥에는 힌트가 없다 */
+body[data-level="hell"] #hintBtn,
+body[data-level="inferno"] #hintBtn{display:none}
+body[data-level="hell"] .bar,
+body[data-level="inferno"] .bar{justify-content:center;gap:32px}
+
 body.no-stt .mic{display:none}
 body.no-stt .bar{justify-content:center;gap:28px}
 body.no-stt .bar-btn{min-width:96px}
