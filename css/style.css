@@ -73,7 +73,12 @@ body:not([data-state="setup"]) .game{display:grid}
   border:1px solid var(--line);background:var(--card);border-radius:12px;
   padding:17px;font-weight:600;color:var(--ink-2);min-height:56px;
 }
-.setup-note{font-size:.82em;color:var(--ink-3);text-align:center;min-height:1.2em}
+.btn-test{margin-top:-10px;font-size:.92em;min-height:48px;padding:12px}
+.setup-note{
+  font-size:.84em;color:var(--ink-3);text-align:center;min-height:1.2em;
+  line-height:1.6;padding:0 4px;
+}
+.setup-note.bad{color:var(--warn);font-weight:500}
 
 /* 규칙과 출처 — 처음 쓰는 선생님이 읽어 보는 곳 */
 .info{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}

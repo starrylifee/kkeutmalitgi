@@ -14,13 +14,20 @@
   var koVoice = null;
   var unlocked = false;
 
+  function koVoices() {
+    return voices.filter(function (v) { return /^ko/i.test(v.lang); });
+  }
+
   function loadVoices() {
     if (!hasTTS) return true;
     voices = (synth.getVoices && synth.getVoices()) || [];
+    var ko = koVoices();
+    /* 삼성 태블릿 기본 엔진은 한국어를 못 읽고 조용히 실패하는 일이 있다.
+       구글 음성이 깔려 있으면 그쪽을 먼저 쓴다. */
     koVoice =
-      voices.find(function (v) { return /^ko/i.test(v.lang) && /Yuna|Google|Nari|Heami/i.test(v.name); }) ||
-      voices.find(function (v) { return /^ko/i.test(v.lang); }) ||
-      null;
+      ko.find(function (v) { return /google/i.test(v.name); }) ||
+      ko.find(function (v) { return /Yuna|Nari|Heami|Sora/i.test(v.name); }) ||
+      ko[0] || null;
     return voices.length > 0;
   }
 
@@ -48,6 +55,40 @@
     return function () { if (!done) { done = true; fn(); } };
   }
 
+  /* 한 번 읽어 준다. 소리가 실제로 시작됐는지(onstart)를 지켜보다가,
+     아무 일도 일어나지 않으면 목소리 지정을 빼고 한 번 더 시도한다.
+     갤럭시탭 기본 엔진이 조용히 실패하는 경우가 있어서다. */
+  function speakOnce(text, useVoice, onStarted, done) {
+    var finish = onceFn(done);
+    var u;
+    try {
+      u = new global.SpeechSynthesisUtterance(text);
+    } catch (e) { finish(); return; }
+    u.lang = 'ko-KR';
+    u.rate = 0.85;
+    u.pitch = 1;
+    if (useVoice && koVoice) u.voice = koVoice;
+
+    var started = false;
+    var keepAlive = setInterval(function () {
+      try { synth.resume(); } catch (e) { /* 무시 */ }
+    }, 5000);
+    var watchdog = setTimeout(end, text.length * 280 + 2500);
+
+    function end() {
+      clearInterval(keepAlive);
+      clearTimeout(watchdog);
+      finish();
+    }
+    u.onstart = function () { started = true; onStarted(); };
+    u.onend = end;
+    u.onerror = end;
+
+    try { synth.speak(u); } catch (e) { end(); return; }
+    // 소리가 시작조차 안 하면 실패로 본다
+    setTimeout(function () { if (!started) onStarted(false); }, 900);
+  }
+
   function speak(text, done) {
     var finish = onceFn(typeof done === 'function' ? done : function () {});
     if (!hasTTS || !text) { finish(); return; }
@@ -55,29 +96,18 @@
 
     // cancel 직후 곧바로 speak하면 iOS에서 무음이 되는 사례가 있어 한 틱 띄운다.
     setTimeout(function () {
-      var u;
-      try {
-        u = new global.SpeechSynthesisUtterance(text);
-      } catch (e) { finish(); return; }
-      u.lang = 'ko-KR';
-      u.rate = 0.85;
-      u.pitch = 1;
-      if (koVoice) u.voice = koVoice;
-
-      var keepAlive = setInterval(function () {
-        try { synth.resume(); } catch (e) { /* 무시 */ }
-      }, 5000);
-      var watchdog = setTimeout(finish2, text.length * 280 + 2500);
-
-      function finish2() {
-        clearInterval(keepAlive);
-        clearTimeout(watchdog);
-        finish();
-      }
-      u.onend = finish2;
-      u.onerror = finish2;
-
-      try { synth.speak(u); } catch (e) { finish2(); }
+      var retried = false;
+      speakOnce(text, true, function (ok) {
+        if (ok === false && !retried) {
+          // 목소리를 고른 게 문제일 수 있다. 엔진이 알아서 고르게 두고 다시 해 본다.
+          retried = true;
+          try { synth.cancel(); } catch (e) { /* 무시 */ }
+          setTimeout(function () { speakOnce(text, false, function () {}, finish); }, 60);
+        }
+      }, function () {
+        // 다시 시도하기로 했으면 첫 번째가 끝났다고 넘어가지 않는다
+        if (!retried) finish();
+      });
     }, 90);
   }
 
@@ -202,8 +232,46 @@
     'start-failed': '마이크를 켜지 못했어요. 글로 써 볼까요?'
   };
 
+  /* 소리가 안 날 때 무엇이 문제인지 알려 준다.
+     갤럭시탭에서 한국어 음성 데이터가 없으면 speak가 조용히 실패한다. */
+  function testSound(report) {
+    if (!hasTTS) {
+      report('이 브라우저는 소리 읽어 주기를 지원하지 않아요. 크롬으로 열어 보세요.', false);
+      return;
+    }
+    loadVoices();
+    var ko = koVoices();
+    if (!voices.length) {
+      report('기기에서 목소리 목록을 아직 못 받았어요. 잠시 뒤 다시 눌러 보세요.', false);
+      return;
+    }
+    if (!ko.length) {
+      report('이 기기에 한국어 목소리가 없어요. 기기 설정 > 일반 > 접근성 > ' +
+        '글자 음성 변환에서 한국어를 내려받거나, 기본 엔진을 「Google 음성 인식 및 합성」으로 바꿔 주세요.', false);
+      return;
+    }
+    try { synth.cancel(); } catch (e) { /* 무시 */ }
+    var heard = false;
+    setTimeout(function () {
+      speakOnce('소리가 잘 들리나요', true, function (ok) {
+        if (ok === false) {
+          report('한국어 목소리(' + ko[0].name + ')는 있는데 소리가 나오지 않아요. ' +
+            '기기 설정에서 기본 음성 엔진을 「Google 음성 인식 및 합성」으로 바꿔 보세요. ' +
+            '미디어 볼륨도 확인해 주세요.', false);
+        } else {
+          heard = true;
+          report('지금 「소리가 잘 들리나요」라고 말했어요. 들렸다면 정상입니다. ' +
+            '(쓰는 목소리: ' + ko[0].name + ')', true);
+        }
+      }, function () {
+        if (!heard) return;
+      });
+    }, 80);
+  }
+
   global.KKI = global.KKI || {};
   global.KKI.speech = {
+    testSound: testSound,
     hasTTS: hasTTS,
     sttSupported: sttSupported,
     isIOS: isIOS,

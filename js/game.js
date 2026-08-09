@@ -21,6 +21,7 @@
     body: document.body,
     setupNote: $('setupNote'),
     startBtn: $('startBtn'),
+    testBtn: $('testBtn'),
     backBtn: $('backBtn'),
     chain: $('chain'),
     badge: $('nextBadge'),
@@ -593,6 +594,14 @@
   }
 
   el.startBtn.addEventListener('click', startGame);
+  el.testBtn.addEventListener('click', function () {
+    SP.unlockTTS();                     // 누른 이 순간에 풀어 둬야 아이폰에서도 소리가 난다
+    el.setupNote.textContent = '소리를 내 보는 중이에요…';
+    SP.testSound(function (msg, ok) {
+      el.setupNote.textContent = msg;
+      el.setupNote.classList.toggle('bad', !ok);
+    });
+  });
   document.addEventListener('pointerdown', function () { SP.unlockTTS(); }, { once: true });
 
   el.backBtn.addEventListener('click', function () {
