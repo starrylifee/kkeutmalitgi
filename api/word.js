@@ -1,13 +1,56 @@
-// 끝말잇기 — Solar Pro 3 프록시.
-// 클라이언트는 시작 글자/글자 수/중복을 이미 검사해서 보낸다.
-// 여기서는 (1) 학생 낱말이 실재하는 말인지 판정하고 (2) AI가 이을 낱말을 만든다.
-// AI가 낸 후보는 서버에서 규칙으로 한 번 더 걸러서 환각을 막는다.
+/* 끝말잇기 서버.
+   일을 셋으로 나눈다.
+     클라이언트  — 시작 글자·글자 수·중복 검사 (0초, 서버에 오기도 전에 끝난다)
+     표준국어대사전 — 그 낱말이 실제로 있는지, 품사가 무엇인지 (사실 판정)
+     Solar Pro 3  — 이어갈 낱말 후보 만들기 (창작)
+   "있는 낱말인가"를 AI에게 묻지 않는 것이 핵심이다.
+   물어보면 「름가마」 「깨비」 같은 없는 말을 지어내서 국어 시간에 잘못 가르치게 된다. */
 
 export const config = { maxDuration: 30 };
 
 const UPSTAGE_KEY = process.env.UPSTAGE_API_KEY;
 const ENDPOINT = 'https://api.upstage.ai/v1/chat/completions';
 const MODEL = 'solar-pro3';
+
+// 국립국어원 표준국어대사전 오픈 API — 하루 5만 건.
+// 낱말이 실제로 있는지는 AI에게 묻지 않고 여기서 확정한다.
+const STDICT_KEY = process.env.STDICT_API_KEY;
+const STDICT = 'https://stdict.korean.go.kr/api/search.do';
+
+/* 반환: {found, noun, pos, def}
+   found=false 는 사전에 없다는 뜻이고, null 은 조회를 못 했다는 뜻이다(둘을 구분해야 한다). */
+async function lookup(word) {
+  if (!STDICT_KEY || !word) return null;
+  const url = `${STDICT}?key=${STDICT_KEY}&q=${encodeURIComponent(word)}` +
+    '&req_type=json&num=10&method=exact&advanced=y';
+  let body;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    body = await r.text();
+  } catch (e) {
+    return null;
+  }
+  if (!body.trim()) return { found: false, noun: false, pos: '', def: '' };  // 없는 말
+  let d;
+  try { d = JSON.parse(body); } catch (e) { return null; }
+
+  let items = (d.channel && d.channel.item) || [];
+  if (!Array.isArray(items)) items = [items];
+  items = items.filter((i) => norm(i && i.word) === word);   // 표제어가 정확히 같은 것만
+  if (!items.length) return { found: false, noun: false, pos: '', def: '' };
+
+  const nouns = items.filter((i) => /명사/.test(String(i.pos || '')));
+  const best = nouns[0] || items[0];
+  const sense = Array.isArray(best.sense) ? best.sense[0] : best.sense;
+  const def = String((sense && sense.definition) || '').split(/(?<=\.)\s/)[0];
+  return {
+    found: true,
+    noun: nouns.length > 0,
+    pos: String(best.pos || '').trim(),
+    def: def.slice(0, 70)
+  };
+}
 
 // 업스테이지 무료 기간: 2027-03-31 23:00 KST
 const FREE_UNTIL = Date.parse('2027-03-31T14:00:00Z');
@@ -69,7 +112,11 @@ function pickCandidate(cands, allowed, usedSet, deadEnd, avoidDeadEnd) {
   return null;
 }
 
-async function askSolar(prompt, maxTokens, temperature) {
+class RateLimited extends Error {}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function askSolar(prompt, maxTokens, temperature, retried) {
   const r = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
@@ -85,6 +132,14 @@ async function askSolar(prompt, maxTokens, temperature) {
   });
   if (!r.ok) {
     const t = await r.text();
+    // 한 반이 한꺼번에 누르면 순간적으로 한도에 걸린다. 조금 기다렸다 한 번만 더 시도한다.
+    if ((r.status === 429 || /request limit/i.test(t)) && !retried) {
+      await sleep(900 + Math.floor(Math.random() * 700));
+      return askSolar(prompt, maxTokens, temperature, true);
+    }
+    if (r.status === 429 || /request limit/i.test(t)) {
+      throw Object.assign(new RateLimited('한도 초과'), { detail: t.slice(0, 200) });
+    }
     throw Object.assign(new Error(`AI 요청 실패 (${r.status})`), { detail: t.slice(0, 300) });
   }
   const c = await r.json();
@@ -105,7 +160,13 @@ async function askJson(prompt, maxTokens, deadline, temps) {
   const T = temps || [0.8, 0.2];
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0 && Date.now() > deadline - 7000) break; // 남은 시간이 없으면 포기
-    const raw = await askSolar(prompt, maxTokens, T[attempt]);
+    let raw;
+    try {
+      raw = await askSolar(prompt, maxTokens, T[attempt]);
+    } catch (e) {
+      if (e instanceof RateLimited) throw e;  // 한도 초과는 다시 시도해도 소용없다
+      throw e;
+    }
     const s = raw.indexOf('{');
     const e = raw.lastIndexOf('}');
     if (s !== -1 && e > s) {
@@ -119,43 +180,6 @@ async function askJson(prompt, maxTokens, deadline, temps) {
 
 /* 판정과 낱말 생성은 성격이 정반대다(판정은 일관되어야 하고 생성은 다양해야 한다).
    그래서 프롬프트를 나누고 온도를 달리해 두 호출을 동시에 보낸다. 지연은 한 번과 같다. */
-function judgePrompt({ word }) {
-  return `당신은 초등학교 국어 선생님입니다.
-학생이 끝말잇기에서 낸 낱말을 쓸 수 있는지 판정합니다. JSON으로만 대답합니다.
-
-## 학생이 낸 낱말
-${word}
-
-## 판정 순서 — 차례대로 따지세요
-1. 먼저 이 말이 국어사전에 표제어로 실려 있는지 확인하세요.
-   실려 있지 않으면 pos는 '없는말'이고 valid는 false입니다.
-   인터넷 유행어·줄임말·신조어(킹받네, 별다줄, 갑분싸, 인싸)는 모두 여기에 듭니다.
-2. 실려 있다면 품사를 정하세요. 이름씨(명사)가 아니면 valid는 false입니다.
-   · 움직씨(동사) — 먹다, 가다, 뛰다, 이어붙이다
-   · 그림씨(형용사) — 빠르다, 예쁘다, 큼직하다
-   · 어찌씨(부사) — 살짝, 성큼, 방금
-3. 특정한 하나의 대상만 가리키는 이름이면 pos는 '고유명사'이고 valid는 false입니다.
-   · 땅 이름 — 서울, 부산, 한국, 제주
-   · 회사·상표 이름 — 삼성, 카카오, 신라면
-   · 사람 이름, 책·노래·영화 제목
-   여러 사람이나 여러 대상에 두루 쓰는 말은 고유명사가 아닙니다.
-   선생님, 어머님, 사장님, 아저씨처럼 누구에게나 쓰는 말은 이름씨입니다.
-4. 위 어느 것에도 걸리지 않으면 valid는 true입니다.
-   초등학생이 흔히 쓰는 낱말은 너그럽게 인정하세요.
-   뜻이 여러 개인 낱말은 그중 하나라도 보통 이름씨이면 true입니다.
-
-## 출력
-- pos: 그 낱말의 품사를 한 낱말로. 이름씨 / 움직씨 / 그림씨 / 어찌씨 / 고유명사 / 없는말 중 하나.
-- valid: 위 순서에 따른 결과.
-- say: 학생에게 건네는 존댓말 한 문장.
-  인정하면 그 낱말의 뜻을 짧고 쉽게 알려 주고,
-  인정하지 않으면 왜 안 되는지 부드럽게 설명하세요. 혼내지 마세요.
-
-{"pos":"품사","valid":true 또는 false,"say":"한 문장"}
-- 문자열 안에서 큰따옴표(")를 쓰지 마세요. 인용이 필요하면 「」를 쓰세요.
-- JSON 밖에는 아무것도 쓰지 마세요.`;
-}
-
 function genPrompt({ used, allowed, level, deadEnd }) {
   var H = headsText(allowed);
   return `당신은 초등학교 국어 시간에 학생과 끝말잇기를 하는 선생님입니다. JSON으로만 대답합니다.
@@ -223,6 +247,28 @@ ${WORD_RULES}
 {"candidates":[{"w":"낱말","p":"품사","m":"뜻","s1":"한 문장","s2":"한 문장","s3":"한 문장"},{"w":"낱말","p":"품사","m":"뜻","s1":"...","s2":"...","s3":"..."},{"w":"낱말","p":"품사","m":"뜻","s1":"...","s2":"...","s3":"..."}]}${JSON_NOTE}`;
 }
 
+// 뜻이 여러 개인 낱말은 그중 하나라도 이름씨이면 인정한다.
+
+/* 반환: {status, pick}
+     'ok'          — 검증을 통과한 낱말이 있다
+     'rejected'    — 검증했더니 쓸 만한 낱말이 없다 → AI가 진 것
+     'unavailable' — 검증 자체를 못 했다(한도 초과 등) → 걸러진 후보로 그냥 진행
+   검증 실패를 '막힘'으로 처리하면 「학교」 다음 「교실」이 있는데도 막히는 일이 생긴다. */
+// 검증에 보낼 후보를 먼저 기계적으로 걸러 낸다.
+function shortlist(cands, allowed, usedSet) {
+  const out = [];
+  for (const c of cands || []) {
+    const w = norm(c && c.w);
+    if (w.length < 2 || w.length > 5) continue;
+    if (allowed.length && allowed.indexOf(w.charAt(0)) === -1) continue;
+    if (usedSet.has(w)) continue;
+    if (!isNoun(c && c.p)) continue;
+    if (w.length >= 3 && w.charAt(w.length - 1) === '다') continue;
+    if (out.indexOf(w) === -1) out.push(w);
+  }
+  return out;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -250,9 +296,18 @@ export default async function handler(req, res) {
     if (mode === 'start') {
       const d = await askJson(startPrompt({ level, used, deadEnd }), 500, deadline);
       if (!d) throw new Error('AI 응답을 읽지 못했습니다.');
-      const pick =
-        pickCandidate(d.candidates, [], usedSet, deadEnd, true) ||
-        pickCandidate(d.candidates, [], usedSet, deadEnd, false);
+      // 첫 낱말도 사전에 있는지 확인하고 내보낸다.
+      const list = shortlist(d.candidates, [], usedSet);
+      const found = await Promise.all(list.map(lookup));
+      const ok = [];
+      for (let i = 0; i < list.length; i++) {
+        if (found[i] && found[i].found && found[i].noun) ok.push({ w: list[i], m: found[i].def });
+      }
+      const pick = ok.find((c) => deadEnd.indexOf(c.w.charAt(c.w.length - 1)) === -1) || ok[0] ||
+        (found.every((r) => r === null)
+          ? pickCandidate(d.candidates, [], usedSet, deadEnd, true) ||
+            pickCandidate(d.candidates, [], usedSet, deadEnd, false)
+          : null);
       if (!pick) throw new Error('첫 낱말을 만들지 못했습니다.');
       return res.status(200).json({
         say: String(d.say || '').slice(0, 120),
@@ -286,41 +341,81 @@ export default async function handler(req, res) {
     usedSet.add(word);
     used.push(word);
 
-    // 판정(낮은 온도)과 낱말 생성(높은 온도)을 동시에 보낸다.
-    const [judge, gen] = await Promise.all([
-      askJson(judgePrompt({ word }), 320, deadline, [0.15, 0.05]).catch(() => null),
-      askJson(genPrompt({ used, allowed, level, deadEnd }), 520, deadline, [0.9, 0.4]).catch(() => null)
-    ]);
+    /* 1) 이어갈 낱말 후보를 만든다(다양해야 하니 온도를 높인다).
+       2) 학생 낱말 판정과 후보 검증을 한 호출로 묶는다(일관돼야 하니 온도를 낮춘다).
+       턴당 두 번만 부르므로 한 반이 같이 써도 한도에 덜 걸린다. */
+    let limited = false;
+    const gen = await askJson(genPrompt({ used, allowed, level, deadEnd }), 520, deadline, [0.9, 0.4])
+      .catch((e) => {
+        if (e instanceof RateLimited) limited = true;
+        return null;
+      });
+    const list = gen ? shortlist(gen.candidates, allowed, usedSet) : [];
 
-    if (!judge && !gen) throw new Error('AI 응답을 읽지 못했습니다.');
+    // 학생 낱말과 AI 후보를 사전에서 한꺼번에 찾는다.
+    const found = await Promise.all([lookup(word)].concat(list.map(lookup)));
+    const me = found[0];
+    const cand = found.slice(1);
 
-    /* 모델이 품사는 바르게 적어 놓고 valid만 true로 흘리는 경우가 있어,
-       품사를 최종 판단 근거로 삼는다. */
-    const pos = judge ? String(judge.pos || '').slice(0, 12) : '';
-    const posBad = !isNoun(pos);
-    const valid = judge ? judge.valid !== false && !posBad : true;
-
-    let say = String((judge && judge.say) || '').slice(0, 160);
-    if (posBad && judge && judge.valid !== false) {
-      // 모델의 설명이 판정과 어긋나므로 서버가 문장을 바꿔 준다.
-      say = '「' + word + '」는 ' + pos + '라서 끝말잇기에서는 쓸 수 없어요. 이름을 나타내는 낱말로 해 볼까요?';
+    if (!gen && !me) {
+      if (limited) throw new RateLimited('한도 초과');
+      throw new Error('AI 응답을 읽지 못했습니다.');
     }
 
-    // 한방 낱말을 피하는 조건은 후보가 다 걸리면 풀어 준다 — 이어가는 게 우선이다.
-    const pick = gen
-      ? (pickCandidate(gen.candidates, allowed, usedSet, deadEnd, true) ||
-         pickCandidate(gen.candidates, allowed, usedSet, deadEnd, false))
-      : null;
+    // 학생 낱말 판정 — 사전이 정한다. 조회를 못 했으면 인정하는 쪽으로 간다.
+    let valid = true;
+    let pos = '';
+    let say = '';
+    if (me) {
+      pos = me.pos;
+      valid = me.found && me.noun;
+      if (!me.found) {
+        say = '「' + word + '」는 국어사전에서 찾을 수 없어요. 다른 낱말로 해 볼까요?';
+      } else if (!me.noun) {
+        say = '「' + word + '」는 ' + (me.pos || '이름을 나타내는 말이 아니라서') +
+          '라서 끝말잇기에서는 쓸 수 없어요. 이름을 나타내는 낱말로 해 볼까요?';
+      } else {
+        say = '「' + word + '」, 좋아요. ' + (me.def || '');
+      }
+    }
 
-    return res.status(200).json({
+    // AI 낱말도 사전에 있는 것만 고른다. 한방 낱말은 뒤로 미룬다.
+    const okCands = [];
+    for (let i = 0; i < list.length; i++) {
+      if (cand[i] && cand[i].found && cand[i].noun) okCands.push({ w: list[i], m: cand[i].def });
+    }
+    let pick = okCands.find((c) => deadEnd.indexOf(c.w.charAt(c.w.length - 1)) === -1) ||
+      okCands[0] || null;
+    // 사전 조회를 아예 못 했으면(키 없음·장애) 예전 방식으로 넘어간다.
+    if (!pick && list.length && cand.every((r) => r === null) && gen) {
+      pick = pickCandidate(gen.candidates, allowed, usedSet, deadEnd, true) ||
+             pickCandidate(gen.candidates, allowed, usedSet, deadEnd, false);
+    }
+
+    const out = {
       valid,
       pos,
       say,
       aiWord: pick ? pick.w : '',
       aiMeaning: pick ? pick.m : '',
       aiStuck: !pick || (gen && gen.stuck === true)
-    });
+    };
+    // 테스트에서 왜 막혔는지 보려고 쓴다. 화면에서는 쓰지 않는다.
+    if (body.debug) {
+      out._cands = (gen && gen.candidates) || null;
+      out._list = list;
+      out._dict = cand.map((r, i) => ({ w: list[i], r }));
+      out._me = me;
+    }
+    return res.status(200).json(out);
   } catch (e) {
+    if (e instanceof RateLimited) {
+      return res.status(429).json({
+        error: '친구들이 한꺼번에 많이 쓰고 있어요. 잠깐 뒤에 다시 해 볼까요?',
+        rateLimited: true,
+        detail: String(e.detail || '').slice(0, 200)
+      });
+    }
     return res.status(500).json({
       error: 'AI가 대답하지 못했어요. 잠시 뒤 다시 해 볼까요?',
       detail: String((e && e.detail) || (e && e.message) || e).slice(0, 300)

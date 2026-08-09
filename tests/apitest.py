@@ -132,7 +132,8 @@ def judge_case(url, word, expect, tag, level):
         "used": [], "level": level, "dueum": True, "deadEnd": DEAD_END,
     })
     if "error" in d:
-        return {"kind": "judge", "word": word, "tag": tag, "err": d["error"], "ms": ms}
+        return {"kind": "judge", "word": word, "tag": tag, "ms": ms,
+                "err": d["error"], "detail": d.get("detail", "")}
     ai = d.get("aiWord") or ""
     return {
         "kind": "judge", "word": word, "tag": tag, "ms": ms,
@@ -152,7 +153,8 @@ def play_game(url, turns, level, gi):
     out = []
     d, ms = post(url, {"mode": "start", "level": level, "used": [], "deadEnd": DEAD_END})
     if "error" in d or not d.get("aiWord"):
-        out.append({"kind": "game", "g": gi, "t": 0, "err": d.get("error", "첫 낱말 없음"), "ms": ms})
+        out.append({"kind": "game", "g": gi, "t": 0, "ms": ms,
+                    "err": d.get("error", "첫 낱말 없음"), "detail": d.get("detail", "")})
         return out
     out.append({"kind": "game", "g": gi, "t": 0, "ms": ms, "ai": d["aiWord"], "ok": True,
                 "dead": d["aiWord"][-1] in DEAD_END})
@@ -178,7 +180,8 @@ def play_game(url, turns, level, gi):
             "level": level, "dueum": True, "deadEnd": DEAD_END,
         })
         if "error" in d:
-            out.append({"kind": "game", "g": gi, "t": t, "err": d["error"], "ms": ms, "student": sw})
+            out.append({"kind": "game", "g": gi, "t": t, "ms": ms, "student": sw,
+                        "err": d["error"], "detail": d.get("detail", "")})
             break
         ai = d.get("aiWord") or ""
         rec = {
@@ -218,11 +221,13 @@ def main():
     random.shuffle(reals)
     fakes = FAKE_WORDS[:]
     random.shuffle(fakes)
-    n_fake = min(len(fakes), max(6, n_judge // 3))
-    for w, tag in fakes[:n_fake]:
+    # 요청 수가 낱말 수보다 많으면 목록을 돌려 쓴다 (같은 낱말도 온도 때문에 결과가 달라진다)
+    n_fake = max(6, n_judge // 4)
+    for i in range(n_fake):
+        w, tag = fakes[i % len(fakes)]
         cases.append((w, False, tag))
-    for w in reals[: n_judge - n_fake]:
-        cases.append((w, True, "실제낱말"))
+    for i in range(n_judge - n_fake):
+        cases.append((reals[i % len(reals)], True, "실제낱말"))
     random.shuffle(cases)
     levels = ["easy", "normal", "hard"]
 
@@ -283,7 +288,14 @@ def main():
     if lat:
         print(f"응답시간  중앙 {statistics.median(lat):.2f}s   "
               f"p90 {lat[int(len(lat) * 0.9) - 1]:.2f}s   최대 {max(lat):.2f}s")
-    print(f"오류      {len(errs)}건" + (f"  ({errs[0].get('err')})" if errs else ""))
+    print(f"오류      {len(errs)}건")
+    if errs:
+        det = {}
+        for r in errs:
+            key = (r.get("detail") or r.get("err") or "")[:110]
+            det[key] = det.get(key, 0) + 1
+        for k, v in sorted(det.items(), key=lambda x: -x[1]):
+            print(f"   {v:3}회  {k}")
 
     if judges:
         ok = sum(1 for r in judges if r["judge_ok"])

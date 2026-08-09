@@ -1,0 +1,289 @@
+{
+  "설명": "실제로 문제가 났던 상황만 모은 문제은행. 케이스마다 여러 번 돌려서 흔들림을 잡는다.",
+  "cases": [
+    {
+      "kind": "continue",
+      "word": "과일",
+      "heads": [
+        "일"
+      ],
+      "note": "일기·일품이 있는데 막혔던 적 있음"
+    },
+    {
+      "kind": "continue",
+      "word": "거울",
+      "heads": [
+        "울"
+      ],
+      "note": "울타리·울음"
+    },
+    {
+      "kind": "continue",
+      "word": "무지개",
+      "heads": [
+        "개"
+      ],
+      "note": "개미·개나리"
+    },
+    {
+      "kind": "continue",
+      "word": "자전거",
+      "heads": [
+        "거"
+      ],
+      "note": "거울·거미"
+    },
+    {
+      "kind": "continue",
+      "word": "학교",
+      "heads": [
+        "교"
+      ],
+      "note": "교실·교문"
+    },
+    {
+      "kind": "continue",
+      "word": "나무",
+      "heads": [
+        "무"
+      ],
+      "note": "무늬·무지개"
+    },
+    {
+      "kind": "continue",
+      "word": "바다",
+      "heads": [
+        "다"
+      ],
+      "note": "다리·다람쥐"
+    },
+    {
+      "kind": "continue",
+      "word": "방석",
+      "heads": [
+        "석"
+      ],
+      "note": "석유·석굴"
+    },
+    {
+      "kind": "continue",
+      "word": "학습",
+      "heads": [
+        "습"
+      ],
+      "note": "습관·습기"
+    },
+    {
+      "kind": "continue",
+      "word": "리본",
+      "heads": [
+        "본"
+      ],
+      "note": "본보기·본디"
+    },
+    {
+      "kind": "continue",
+      "word": "사과",
+      "heads": [
+        "과"
+      ],
+      "note": "과자·과일"
+    },
+    {
+      "kind": "continue",
+      "word": "연필",
+      "heads": [
+        "필"
+      ],
+      "note": "필통·필기"
+    },
+    {
+      "kind": "continue",
+      "word": "가방",
+      "heads": [
+        "방"
+      ],
+      "note": "방석·방학"
+    },
+    {
+      "kind": "continue",
+      "word": "지우개",
+      "heads": [
+        "개"
+      ],
+      "note": "개구리"
+    },
+    {
+      "kind": "continue",
+      "word": "가락",
+      "heads": [
+        "락",
+        "낙"
+      ],
+      "note": "두음법칙 — 낙엽·낙타"
+    },
+    {
+      "kind": "continue",
+      "word": "기린",
+      "heads": [
+        "린",
+        "인",
+        "닌"
+      ],
+      "note": "두음법칙 — 인형·인사"
+    },
+    {
+      "kind": "continue",
+      "word": "수리",
+      "heads": [
+        "리",
+        "이",
+        "니"
+      ],
+      "note": "두음법칙 — 이불·이슬"
+    },
+    {
+      "kind": "stuck",
+      "word": "구름",
+      "heads": [
+        "름"
+      ],
+      "note": "「름」으로 시작하는 낱말 없음 — 름가마를 지어냈던 자리"
+    },
+    {
+      "kind": "stuck",
+      "word": "마름",
+      "heads": [
+        "름"
+      ],
+      "note": "름새를 지어냈던 자리"
+    },
+    {
+      "kind": "continue",
+      "word": "선생님",
+      "heads": [
+        "님"
+      ],
+      "soft": true,
+      "note": "님비가 사전에 있다. 「님자」 「님조」를 지어냈던 자리"
+    },
+    {
+      "kind": "continue",
+      "word": "사슴",
+      "heads": [
+        "슴"
+      ],
+      "soft": true,
+      "note": "슴새·슴베가 사전에 있지만 AI가 잘 떠올리지 못한다. 막혀도 새 낱말로 이어지므로 괜찮다"
+    },
+    {
+      "kind": "continue",
+      "word": "가늠",
+      "heads": [
+        "늠"
+      ],
+      "soft": true,
+      "note": "늠진·늠장이 사전에 있다. 「늠바」를 지어냈던 자리"
+    },
+    {
+      "kind": "stuck",
+      "word": "무릎",
+      "heads": [
+        "릎"
+      ],
+      "note": "「릎」 시작 낱말 없음"
+    },
+    {
+      "kind": "stuck",
+      "word": "가을",
+      "heads": [
+        "을"
+      ],
+      "note": "「을」 시작 낱말 없음"
+    },
+    {
+      "kind": "judge",
+      "word": "사과",
+      "valid": true,
+      "note": "가장 흔한 낱말인데 물리쳤던 적 있음"
+    },
+    {
+      "kind": "judge",
+      "word": "책상",
+      "valid": true,
+      "note": "물리쳤던 적 있음"
+    },
+    {
+      "kind": "judge",
+      "word": "선생님",
+      "valid": true,
+      "note": "고유명사로 잘못 봤던 적 있음"
+    },
+    {
+      "kind": "judge",
+      "word": "운동장",
+      "valid": true,
+      "note": "사전에 없다고 했던 적 있음"
+    },
+    {
+      "kind": "judge",
+      "word": "먹다",
+      "valid": false,
+      "note": "움직씨"
+    },
+    {
+      "kind": "judge",
+      "word": "빠르다",
+      "valid": false,
+      "note": "그림씨"
+    },
+    {
+      "kind": "judge",
+      "word": "살짝",
+      "valid": false,
+      "note": "어찌씨"
+    },
+    {
+      "kind": "judge",
+      "word": "성큼",
+      "valid": false,
+      "note": "어찌씨"
+    },
+    {
+      "kind": "judge",
+      "word": "서울",
+      "valid": true,
+      "note": "표준국어대사전에 보통명사로 실려 있다 — 「한 나라의 중앙 정부가 있는 곳」"
+    },
+    {
+      "kind": "judge",
+      "word": "삼성",
+      "valid": true,
+      "note": "표준국어대사전에 보통명사로 실려 있다 — 「사람의 세 가지 성품」"
+    },
+    {
+      "kind": "judge",
+      "word": "제주도",
+      "valid": true,
+      "note": "표준국어대사전에 명사로 실려 있다. 사전 API로는 고유명사를 가려낼 수 없다"
+    },
+    {
+      "kind": "judge",
+      "word": "킹받네",
+      "valid": false,
+      "note": "신조어"
+    },
+    {
+      "kind": "judge",
+      "word": "별다줄",
+      "valid": false,
+      "note": "신조어 — 가장 자주 통과함"
+    },
+    {
+      "kind": "judge",
+      "word": "슈뷁",
+      "valid": false,
+      "note": "없는 말"
+    }
+  ]
+}

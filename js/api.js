@@ -13,7 +13,12 @@
     })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (data) {
-          if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+          if (!r.ok) {
+            var err = new Error(data.error || 'HTTP ' + r.status);
+            // 한도 초과는 다시 눌러도 소용없다. 재시도하지 않고 그대로 알린다.
+            if (data.rateLimited || r.status === 429) err.rateLimited = true;
+            throw err;
+          }
           return data;
         });
       })
@@ -25,6 +30,7 @@
     var timeout = opt.timeout || 26000;
     return once(body, timeout).catch(function (err) {
       // 네트워크가 순간적으로 끊긴 경우만 한 번 더
+      if (err && err.rateLimited) throw err;
       if (err && err.name === 'AbortError') throw new Error('AI가 늦게 대답하고 있어요. 다시 해 볼까요?');
       return new Promise(function (res) { setTimeout(res, 700); }).then(function () {
         return once(body, timeout);
