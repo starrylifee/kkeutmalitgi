@@ -40,9 +40,31 @@ api/word.js       Solar Pro 3 프록시 (Vercel 서버리스)
 ## 테스트
 
 ```bash
-python tests/banktest.py --runs 5    # 문제은행 — 실제로 문제가 났던 상황만 반복
-python tests/apitest.py --n 150      # 판정 정확도 + 게임 완주
-python tests/ratetest.py             # 초당 몇 명까지 견디는지
+python tests/banktest.py --runs 5              # 문제은행 — 실제로 문제가 났던 상황만 반복
+python tests/apitest.py --n 150                # 판정 정확도 + 게임 완주
+python tests/ratetest.py                       # 초당 몇 명까지 견디는지
+python tests/helltest.py --level inferno       # 지옥 모드가 제대로 조여가는지
+```
+
+## 끝 글자 표 (data/, tools/)
+
+한글 음절 11,172자를 사전에 하나씩 물어 「이 글자로 시작하는 이름씨가 몇 개인가」를 세어 두었다.
+1,485자만 낱말을 시작하고 나머지 9,687자는 하나도 없다. 이 표로 세 가지를 한다.
+
+- 보통 모드 — AI가 학생이 이어가기 쉬운 글자로 끝낸다
+- 지옥 모드 — 반대로 이어가기 어려운 글자로 몰아간다
+- 한방 봉인 — 학생이 「기쁨」을 꽂을 수 있는 「기」로는 AI가 끝내지 않는다
+
+손으로 적은 목록은 틀린다. 흙(121개) 밭(101) 짚(44)은 멀쩡히 이어지고,
+진짜 0개는 쁨 픔 름 릎 슭 륨 읒 읓 읔 읕 읖 귿 뿐이다.
+
+다시 만들려면 (한 번에 20분, 사전 API 2만 건):
+
+```bash
+vercel env pull .env.local     # 키는 여기서만 읽는다. 스크립트에 적지 않는다.
+python tools/build_heads.py    # 끝 글자 점수표
+python tools/build_danger.py   # 초지옥 무기고 재료
+python tools/make_tables.py    # api/_tables.js 로 옮긴다
 ```
 
 AI 응답은 매번 조금씩 달라서 한 번 돌려서는 흔들림이 안 잡힙니다.

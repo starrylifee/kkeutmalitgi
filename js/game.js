@@ -34,6 +34,7 @@
     micLabel: $('micLabel'),
     typeBtn: $('typeBtn'),
     hintBtn: $('hintBtn'),
+    giveBtn: $('giveBtn'),
     roundCount: $('roundCount'),
     modal: $('modal'),
     modalInput: $('modalInput'),
@@ -52,7 +53,7 @@
   };
 
   var settings = { dueum: true, level: 'g3', time: 0 };
-  var LEVELS = ['g1', 'g3', 'g5', 'adult'];
+  var LEVELS = ['g1', 'g3', 'g5', 'adult', 'hell', 'inferno'];
   var state = S.SETUP;
   var chain = [];          // {who:'me'|'ai', word, mean, pending, reject}
   var used = new Set();
@@ -95,12 +96,18 @@
         settings[key] = cast ? cast(b.dataset.val) : b.dataset.val;
         saveSettings();
         paint();
+        if (key === 'level') paintHellNote();
       });
     });
     paint();
   }
 
   /* ── 공통 UI ─────────────────────────────── */
+
+  function paintHellNote() {
+    var n = document.getElementById('hellNote');
+    if (n) n.hidden = LEVELS.indexOf(settings.level) < 4;
+  }
 
   var toastTimer = null;
   function toast(msg, tone) {
@@ -227,9 +234,9 @@
     setState(S.BOOTING);
     el.focusMsg.textContent = 'AI가 첫 낱말을 고르고 있어요';
 
-    API.start({ level: settings.level, deadEnd: H.DEAD_END })
+    API.start({ level: settings.level, deadEnd: H.DEAD_END, dueum: settings.dueum })
       .then(function (res) {
-        playAiTurn(res.aiWord, res.aiMeaning, res.say);
+        playAiTurn(res.aiWord, res.aiMeaning, false, 1);
       })
       .catch(function (err) {
         el.focusMsg.textContent = '연결이 잘 안 돼요';
@@ -240,19 +247,41 @@
       });
   }
 
-  function playAiTurn(word, mean, say) {
+  function playAiTurn(word, mean, kill, nextCount) {
     setState(S.AI);
     if (thinkNode) { removeNode(thinkNode); thinkNode = null; }
     if (!word) { onAiStuck(); return; }
 
     used.add(word);
-    pushTurn({ who: 'ai', word: word, mean: mean });
+    pushTurn({ who: 'ai', word: word, mean: mean, kill: kill });
     renderBadge();
     el.focusMsg.textContent = 'AI가 말하고 있어요';
 
     var line = word + '. ' + (mean || '');
     SP.speak(line, function () {
+      // 지옥 모드에서 한방 낱말을 맞았으면 여기서 판이 끝난다
+      if (kill || nextCount === 0) { onStudentDead(word); return; }
       toStudentTurn();
+    });
+  }
+
+  /* 학생이 이을 낱말이 하나도 없는 글자에 걸렸다 — 지옥 모드의 결말.
+     몇 턴 버텼는지 남겨서 다시 도전하고 싶게 만든다. */
+  function onStudentDead(word) {
+    stopTimer();
+    var last = H.lastCharOf(word);
+    var best = 0;
+    try { best = parseInt(localStorage.getItem('kki-hell-best') || '0', 10) || 0; } catch (e) { /* 무시 */ }
+    var isBest = turns > best;
+    if (isBest) {
+      try { localStorage.setItem('kki-hell-best', String(turns)); } catch (e) { /* 무시 */ }
+    }
+    var msg = '「' + last + '」로 시작하는 낱말은 국어사전에 없어요. 제가 이겼습니다.';
+    pushDivider(turns + '턴 버팀' + (isBest ? ' — 최고 기록!' : ' (최고 기록 ' + best + '턴)'));
+    el.focusMsg.textContent = msg;
+    toast(msg, 'warn');
+    SP.speak(msg + ' ' + turns + '턴 버텼어요.', function () {
+      restartChain('다시 해 볼까요?');
     });
   }
 
@@ -288,8 +317,8 @@
       turns = 0;
       el.roundCount.textContent = '0';
       el.focusMsg.textContent = 'AI가 새 낱말을 고르고 있어요';
-      API.start({ level: settings.level, deadEnd: H.DEAD_END, used: [] })
-        .then(function (res) { playAiTurn(res.aiWord, res.aiMeaning); })
+      API.start({ level: settings.level, deadEnd: H.DEAD_END, dueum: settings.dueum, used: [] })
+        .then(function (res) { playAiTurn(res.aiWord, res.aiMeaning, false, 1); })
         .catch(function () {
           chain = [];
           setState(S.STUDENT);
@@ -338,7 +367,8 @@
       allowed: allowedHeads(),
       level: settings.level,
       dueum: settings.dueum,
-      deadEnd: H.DEAD_END
+      deadEnd: H.DEAD_END,
+      turn: turns          // 지옥 모드에서 턴이 갈수록 조여가는 데 쓴다
     })
       .then(function (res) {
         if (res.valid === false) {
@@ -364,7 +394,7 @@
         el.roundCount.textContent = String(turns);
 
         if (res.aiStuck || !res.aiWord) { removeNode(thinkNode); thinkNode = null; onAiStuck(); return; }
-        playAiTurn(res.aiWord, res.aiMeaning);
+        playAiTurn(res.aiWord, res.aiMeaning, res.aiKill, res.nextCount);
       })
       .catch(function (err) {
         removeNode(pendingNode);
@@ -593,6 +623,7 @@
   bindSeg('optDueum', 'dueum', function (v) { return v === 'on'; });
   bindSeg('optLevel', 'level', null);
   bindSeg('optTime', 'time', function (v) { return parseInt(v, 10); });
+  paintHellNote();
 
   if (!SP.sttSupported) {
     el.body.classList.add('no-stt');
@@ -619,6 +650,19 @@
     closeModal();
     closeHint();
     setState(S.SETUP);
+  });
+
+  /* 포기 — 막혔을 때 언제든 새 판을 시작한다.
+     승패를 가리는 놀이가 아니니 확인창 없이 바로 넘어간다. */
+  el.giveBtn.addEventListener('click', function () {
+    if (state === S.SETUP || state === S.BOOTING) return;
+    SP.stopSpeaking();
+    SP.stopListen();
+    closeModal();
+    closeHint();
+    restartChain(turns > 0
+      ? turns + '턴까지 갔네요. 새 낱말로 다시 시작할게요.'
+      : '새 낱말로 다시 시작할게요.');
   });
 
   el.micBtn.addEventListener('click', onMic);

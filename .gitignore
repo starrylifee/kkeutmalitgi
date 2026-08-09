@@ -3,3 +3,6 @@
 .env.*
 node_modules
 *.log
+tools/.*-cache.json
+tools/*.log
+tools/report.txt

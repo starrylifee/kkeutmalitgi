@@ -6,6 +6,8 @@
    "있는 낱말인가"를 AI에게 묻지 않는 것이 핵심이다.
    물어보면 「름가마」 「깨비」 같은 없는 말을 지어내서 국어 시간에 잘못 가르치게 된다. */
 
+import { HEADS, KILLERS, ARSENAL } from './_tables.js';
+
 export const config = { maxDuration: 30 };
 
 const UPSTAGE_KEY = process.env.UPSTAGE_API_KEY;
@@ -70,8 +72,80 @@ const LEVEL = {
   g5: '초등학교 5~6학년이 아는 낱말. 네 글자까지. 교과서에 나오는 말이면 좋습니다.',
   adult: '중학생 이상도 겨루어 볼 만한 낱말. 네 글자까지. 어려운 말도 괜찮습니다.'
 };
-const LEVEL_NAME = { g1: '1~2학년', g3: '3~4학년', g5: '5~6학년', adult: '초6 이상' };
+LEVEL.hell = '어려운 낱말. 한자어와 학술 용어도 좋습니다. 세 글자에서 다섯 글자.';
+LEVEL.inferno = LEVEL.hell;
+
+const LEVEL_NAME = {
+  g1: '1~2학년', g3: '3~4학년', g5: '5~6학년', adult: '초6 이상',
+  hell: '지옥', inferno: '초지옥'
+};
+const HELL = ['hell', 'inferno'];
 const LEVELS = Object.keys(LEVEL);
+
+/* ── 지옥 모드 ──────────────────────────────────────────────
+   보통 모드는 학생이 이어가기 쉬운 글자로 끝내려 한다. 지옥 모드는 그 반대다.
+
+   1) 턴이 갈수록 이어갈 낱말이 적은 글자로 끝낸다(조여가기).
+   2) 학생이 한방 낱말을 꽂을 수 있는 글자로는 끝내지 않는다.
+      「기」로 끝내면 학생이 「기쁨」을 낼 수 있으므로 「기」를 피한다.
+   3) 7턴부터 AI가 한방 낱말을 직접 꺼낸다. */
+
+// 두음법칙을 켜면 이을 수 있는 글자가 늘어난다. 그만큼 덜 치명적이다.
+function reach(ch, dueum) {
+  if (!dueum) return HEADS[ch] || 0;
+  return heads(ch).reduce((sum, v) => sum + (HEADS[v] || 0), 0);
+}
+
+// 두음법칙으로 바꿔 쓸 수 있는 글자들 (js/hangul.js 와 같은 규칙)
+function heads(ch) {
+  const c = ch.charCodeAt(0) - 0xac00;
+  if (c < 0 || c > 11171) return [ch];
+  const cho = (c / 588) | 0;
+  const jung = ((c % 588) / 28) | 0;
+  const jong = c % 28;
+  const out = [ch];
+  const add = (x) => {
+    const v = String.fromCharCode(0xac00 + x * 588 + jung * 28 + jong);
+    if (out.indexOf(v) === -1) out.push(v);
+  };
+  const yR = [2, 6, 7, 12, 17, 20].indexOf(jung) !== -1;
+  const yN = [2, 6, 12, 17, 20].indexOf(jung) !== -1;
+  if (yR) {
+    if (cho === 5 || cho === 2 || cho === 11) { add(5); add(11); if (yN) add(2); }
+  } else if (cho === 5 || cho === 2) { add(5); add(2); }
+  return out;
+}
+
+/* 공격과 방어의 기준이 다르다.
+   공격(AI가 한방을 꽂는다) — 이을 낱말이 정말 0개일 때만. 「캥」은 3개뿐이지만
+     캥거루가 있으니 즉사가 아니다. 이걸 즉사로 치면 아이가 억울하게 진다.
+   방어(AI가 그 글자로 끝내지 않는다) — 5개 미만이면 피한다. 넉넉하게 잡아 둔다. */
+const KILL_MAX = 0;
+const LETHAL = 5;
+
+// 이 설정에서 실제로 한방인 낱말들
+function liveKillers(dueum) {
+  return KILLERS.filter((w) => reach(w.charAt(w.length - 1), dueum) < LETHAL);
+}
+
+/* AI가 끝내면 안 되는 글자 — 학생이 여기서 한방을 꽂을 수 있다.
+   두음법칙이 켜져 있으면 「이」로 끝내도 「리튬」이 들어오므로 바뀔 수 있는 글자까지 막는다. */
+function forbiddenTails(dueum) {
+  const out = new Set();
+  for (const w of liveKillers(dueum)) {
+    const first = w.charAt(0);
+    (dueum ? heads(first) : [first]).forEach((c) => out.add(c));
+  }
+  return out;
+}
+
+// 턴에 따라 조여간다. 뒤로 갈수록 이어갈 낱말이 적은 글자를 노린다.
+function squeeze(turn) {
+  if (turn <= 2) return [800, Infinity];
+  if (turn <= 4) return [200, 800];
+  if (turn <= 6) return [20, 200];
+  return [LETHAL, 20];
+}
 
 /* AI에게는 "초등학생이 아는 낱말 고르기"만 시킨다.
    실제로 있는 말인지, 품사가 무엇인지, 뜻이 무엇인지는 사전이 알려 주므로
@@ -120,7 +194,7 @@ function norm(raw) {
 
 /* AI가 낸 낱말 가운데 사전에 물어볼 만한 것만 추린다.
    품사·존재 여부는 사전이 판단하므로 여기서는 모양만 본다. */
-function shortlist(words, allowed, usedSet) {
+function shortlist(words, allowed, usedSet, max) {
   const out = [];
   for (const raw of Array.isArray(words) ? words : []) {
     const w = norm(raw);
@@ -130,7 +204,7 @@ function shortlist(words, allowed, usedSet) {
     if (w.length >= 3 && w.charAt(w.length - 1) === '다') continue; // 「오르다」류 기본형
     if (out.indexOf(w) === -1) out.push(w);
   }
-  return out.slice(0, 5);
+  return out.slice(0, max || 5);
 }
 
 class RateLimited extends Error {}
@@ -203,22 +277,39 @@ async function askJson(prompt, maxTokens, deadline, temps) {
    실재 여부·품사·뜻은 사전이 알려 주므로 프롬프트에서 뺐다. */
 function genPrompt({ used, allowed, level, deadEnd }) {
   const H = headsText(allowed);
+  const hell = level === 'hell';
+  const n = hell ? 10 : 5;
+  /* 지옥 모드는 어느 글자로 끝낼지를 서버가 고른다.
+     그래서 AI에게는 후보만 넉넉히 받고, 끝 글자 조건은 걸지 않는다. */
+  const tailRule = hell
+    ? '- 낱말의 끝 글자는 신경 쓰지 말고, 서로 다른 글자로 끝나는 낱말을 골고루 고르세요.'
+    : `- 이 글자로 끝나는 낱말은 학생이 이어가기 어려우니 피하세요: ${deadEnd.join('')}`;
+
   return `초등학교 국어 시간에 학생과 끝말잇기를 하고 있습니다.
-${H}(으)로 시작하는 낱말 다섯 개를 고르세요.
+${H}(으)로 시작하는 낱말 ${n}개를 고르세요.
 
-- 다섯 낱말의 **첫 글자가 모두 ${H}** 여야 합니다. 비슷한 다른 글자로 시작하면 안 됩니다.${missHint(allowed[0])}${headsHint(allowed)}
+- ${n}개 낱말의 **첫 글자가 모두 ${H}** 여야 합니다. 비슷한 다른 글자로 시작하면 안 됩니다.${missHint(allowed[0])}${headsHint(allowed)}
 - ${LEVEL[level] || LEVEL.g3}
-${WORD_RULES}
+${hell ? '- 이름씨(명사)만. 사람·지역·상표 이름은 쓰지 마세요.' : WORD_RULES}
 - 이미 나온 낱말은 빼세요: ${used.length ? used.join(', ') : '없음'}
-- 이 글자로 끝나는 낱말은 학생이 이어가기 어려우니 피하세요: ${deadEnd.join('')}
+${tailRule}
 
-{"w":["낱말","낱말","낱말","낱말","낱말"]}
+{"w":[${Array(Math.min(n, 5)).fill('"낱말"').join(',')}${n > 5 ? ',...' : ''}]}
 위 형식의 JSON만 출력하세요. 다른 말은 쓰지 마세요.
-내보내기 전에 다시 확인하세요 — 다섯 낱말이 모두 ${H}(으)로 시작합니까?`;
+내보내기 전에 다시 확인하세요 — 낱말이 모두 ${H}(으)로 시작합니까?`;
 }
 
 /* 그냥 "쉬운 낱말"이라고 하면 모델은 늘 「사과」부터 떠올린다.
    갈래를 하나 무작위로 정해 주면 시작 낱말이 다양해진다. */
+/* 첫 낱말 후보. 아이가 다 아는 말이면서 뒤가 넉넉한 글자로 끝나는 것들이다.
+   AI에게 물으면 「사과」로 쏠리고 지옥에서는 「가각고」 같은 말이 나와서,
+   여기서 뽑고 사전으로 확인만 한다. 시작도 그만큼 빨라진다. */
+const OPENERS = [
+  '가방', '기차', '나비', '나무', '노래', '달력', '무지개', '바다', '바람', '방학',
+  '수박', '시계', '신발', '악어', '연필', '우유', '자전거', '지우개', '참새', '창문',
+  '책상', '초코', '토마토', '포도', '피아노', '기린', '풍선', '수건', '양말', '단추'
+];
+
 const TOPICS = [
   '동물', '과일이나 채소', '학용품', '음식', '하늘·바다·산 같은 자연',
   '탈것', '집 안에 있는 물건', '놀이나 운동', '몸의 한 부분', '학교에서 보는 것',
@@ -261,6 +352,93 @@ ${WORD_RULES}
 
 /* 사전 조회 결과에서 쓸 낱말을 고른다.
    요즘 쓰는 말(일반어)을 먼저 보고, 학생이 이어가기 어려운 한방 낱말은 뒤로 미룬다. */
+/* 지옥 모드에서 낼 낱말을 고른다.
+   opts: {turn, dueum, allowed, usedSet} */
+const KILL_TURN = 3;   // 이 턴부터 한방 낱말을 꺼낸다
+
+/* 사전에서 그 글자로 시작하는 낱말을 통째로 받아 온다.
+   AI에게 「어려운 낱말을 골라라」라고만 하면 흔한 글자로 끝나는 낱말만 내놓아
+   조여가기가 되지 않는다. 그래서 지옥에서는 사전에서 직접 고른다. */
+async function prefixWords(head) {
+  if (!STDICT_KEY || !head) return [];
+  const url = `${STDICT}?key=${STDICT_KEY}&q=${encodeURIComponent(head)}` +
+    '&req_type=json&num=100&method=start&advanced=y&type1=word&pos=1';
+  let body;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
+    if (!r.ok) return [];
+    body = await r.text();
+  } catch (e) {
+    return [];
+  }
+  if (!body.trim()) return [];
+  let d;
+  try { d = JSON.parse(body); } catch (e) { return []; }
+  let items = (d.channel && d.channel.item) || [];
+  if (!Array.isArray(items)) items = [items];
+
+  const out = [];
+  for (const i of items) {
+    if (!/명사/.test(String(i.pos || ''))) continue;
+    const w = norm(String(i.word || '').replace(/[-^]/g, ''));
+    if (w.length < 2 || w.length > 5 || w.charAt(0) !== head) continue;
+    const def = String(senseOf(i).definition || '').split(/(?<=\.)\s/)[0];
+    if (!def) continue;
+    out.push({ w, m: def.slice(0, 70) });
+  }
+  return out;
+}
+
+/* 무기고를 고른다.
+   지옥   — 아이가 아는 한방 낱말 36개. 첫 글자가 맞아떨어질 때만 터지므로 가끔 나온다.
+            지고 나서 「기쁨이 그렇게 무서운 말이었어?」 하고 배우게 된다.
+   초지옥 — 사전에서 뽑은 한방 낱말 2,384개. 거의 매번 있으니 서너 턴이면 끝난다.
+            아이가 모르는 낱말이어도 상관없다. 지고 나서 뜻을 보면 된다. */
+function weapons(level, allowed, dueum, usedSet) {
+  const pool = level === 'inferno'
+    ? allowed.reduce((a, h) => a.concat(ARSENAL[h] || []), [])
+    : liveKillers(dueum).filter((w) => allowed.indexOf(w.charAt(0)) !== -1);
+  // 두음법칙을 켜면 「기념」처럼 풀리는 낱말이 있다. 이을 낱말이 하나도 없는 것만 남긴다.
+  return pool.filter((w) => !usedSet.has(w) && reach(w.charAt(w.length - 1), dueum) <= KILL_MAX);
+}
+
+async function pickHell(ok, opts) {
+  const { turn, dueum, allowed, usedSet, level } = opts;
+
+  if (turn >= KILL_TURN) {
+    const shots = weapons(level, allowed, dueum, usedSet);
+    if (shots.length) {
+      const shot = shots[Math.floor(Math.random() * Math.min(shots.length, 5))];
+      const r = await lookup(shot);
+      // 사전에 없는 것으로 나오면(옛말 정리 등) 무기를 쓰지 않는다
+      if (r && r.found) return { w: shot, m: r.def || '', kill: true };
+    }
+  }
+
+  /* 사전에서 그 글자로 시작하는 낱말을 받아 AI 후보와 합친다.
+     AI 후보만으로는 목표 글자에 맞는 게 잘 안 나온다. */
+  const fromDict = (await Promise.all(allowed.map(prefixWords))).flat();
+  const all = ok.concat(fromDict).filter((c) => !usedSet.has(c.w));
+  if (!all.length) return null;
+
+  const banned = forbiddenTails(dueum);
+  // 학생이 한방을 꽂을 수 있는 글자는 피한다
+  const safe = all.filter((c) => !banned.has(c.w.charAt(c.w.length - 1)));
+  const pool = safe.length ? safe : all;
+
+  const [lo, hi] = squeeze(turn);
+  const scored = pool.map((c) => ({ c, n: reach(c.w.charAt(c.w.length - 1), dueum) }));
+  const inBand = scored.filter((s) => s.n >= lo && s.n < hi);
+  if (inBand.length) {
+    // 구간 안에서는 아무거나 — 매번 같은 낱말이 나오지 않게
+    return inBand[Math.floor(Math.random() * inBand.length)].c;
+  }
+  // 구간에 맞는 게 없으면 가장 조이는 쪽으로 간다
+  const below = scored.filter((s) => s.n < hi).sort((a, b) => b.n - a.n);
+  if (below.length) return below[0].c;
+  return scored.sort((a, b) => a.n - b.n)[0].c;
+}
+
 function pickFrom(list, found, deadEnd) {
   const ok = [];
   for (let i = 0; i < list.length; i++) {
@@ -278,6 +456,24 @@ function pickFrom(list, found, deadEnd) {
 async function choose(list, deadEnd) {
   if (!list.length) return null;
   return pickFrom(list, await Promise.all(list.map(lookup)), deadEnd);
+}
+
+/* 지옥의 첫 낱말 — 학생이 곧바로 한방을 꽂을 수 있는 글자로는 끝내지 않는다. */
+async function chooseSafe(list, dueum) {
+  if (!list.length) return null;
+  const found = await Promise.all(list.map(lookup));
+  const ok = [];
+  for (let i = 0; i < list.length; i++) {
+    const r = found[i];
+    if (r && r.found && r.noun && r.common) ok.push({ w: list[i], m: r.def });
+  }
+  const banned = forbiddenTails(dueum);
+  // 첫 낱말은 학생이 편히 이어갈 수 있어야 한다. 넉넉한 글자로 끝나는 것을 고른다.
+  const safe = ok.filter((c) => !banned.has(c.w.charAt(c.w.length - 1)) &&
+    reach(c.w.charAt(c.w.length - 1), dueum) >= 200);
+  const bag = safe.length ? safe : ok.filter((c) => !banned.has(c.w.charAt(c.w.length - 1)));
+  const use = bag.length ? bag : ok;
+  return use.length ? use[Math.floor(Math.random() * use.length)] : null;
 }
 
 export default async function handler(req, res) {
@@ -305,12 +501,22 @@ export default async function handler(req, res) {
     const deadEnd = clampArr(body.deadEnd, 40).filter(Boolean);
 
     if (mode === 'start') {
-      const d = await askJson(startPrompt({ level, used, deadEnd }), 260, deadline);
+      /* 첫 낱말은 목록에서 뽑는다. 아이가 아는 말로 시작해야 하고,
+         어려움은 조여가기에서 나와야지 첫 낱말에서 나오면 안 된다.
+         AI를 부르지 않으니 시작도 1초 안에 끝난다. */
+      const bag = OPENERS.filter((w) => !usedSet.has(w));
+      const shuffled = bag.sort(() => Math.random() - 0.5).slice(0, 6);
+      const pick = HELL.indexOf(level) !== -1
+        ? await chooseSafe(shuffled, body.dueum !== false)
+        : await choose(shuffled, deadEnd);
+      if (pick) return res.status(200).json({ aiWord: pick.w, aiMeaning: pick.m });
+
+      // 사전 조회가 안 되면 그때만 AI에게 물어본다
+      const d = await askJson(startPrompt({ level: 'g5', used, deadEnd }), 260, deadline);
       if (!d) throw new Error('AI 응답을 읽지 못했습니다.');
-      const list = shortlist(d.w, [], usedSet);
-      const pick = await choose(list, deadEnd);
-      if (!pick) throw new Error('첫 낱말을 만들지 못했습니다.');
-      return res.status(200).json({ aiWord: pick.w, aiMeaning: pick.m });
+      const alt = await choose(shortlist(d.w, [], usedSet), deadEnd);
+      if (!alt) throw new Error('첫 낱말을 만들지 못했습니다.');
+      return res.status(200).json({ aiWord: alt.w, aiMeaning: alt.m });
     }
 
     if (mode === 'hint') {
@@ -344,19 +550,19 @@ export default async function handler(req, res) {
     /* AI에게는 그 학년 아이가 아는 낱말 다섯 개를 고르는 일만 시킨다.
        실재 여부·품사·뜻은 사전이 알려 주므로 프롬프트에서 뺐고, 그만큼 짧고 빠르다. */
     let limited = false;
-    const gen = await askJson(genPrompt({ used, allowed, level, deadEnd }), 260, deadline, [0.9, 0.4])
+    const gen = await askJson(genPrompt({ used, allowed, level, deadEnd }), level === "hell" ? 420 : 260, deadline, [0.9, 0.4])
       .catch((e) => {
         if (e instanceof RateLimited) limited = true;
         return null;
       });
-    let list = gen ? shortlist(gen.w, allowed, usedSet) : [];
+    let list = gen ? shortlist(gen.w, allowed, usedSet, level === 'hell' ? 10 : 5) : [];
 
     /* 다섯 개가 전부 엉뚱한 글자로 시작하는 일이 가끔 있다(「개」를 「가」로 읽는다).
        그럴 때만 온도를 낮춰 한 번 더 묻는다. 이게 없으면 AI가 헛되이 진다. */
     if (gen && !list.length && Date.now() < deadline - 9000) {
       const again = await askJson(genPrompt({ used, allowed, level, deadEnd }), 260, deadline, [0.25, 0.1])
         .catch(() => null);
-      if (again) list = shortlist(again.w, allowed, usedSet);
+      if (again) list = shortlist(again.w, allowed, usedSet, level === 'hell' ? 10 : 5);
     }
 
     // 학생 낱말과 AI 후보를 사전에서 한꺼번에 찾는다.
@@ -390,7 +596,24 @@ export default async function handler(req, res) {
     /* AI 낱말은 사전에 있고 요즘 쓰는 말이어야 통과한다.
        사전에 있어도 그 학년이 모를 말이면 AI가 지는 쪽이 낫다. 승패가 없는 놀이라
        AI가 지는 순간이 오히려 아이들에게 즐겁고, 난이도 설정과도 맞아떨어진다. */
-    const pick = pickFrom(list, cand, deadEnd);
+    let pick;
+    if (HELL.indexOf(level) !== -1) {
+      /* 지옥에서는 옛말·전문어도 받아 준다. 보통 모드에서는 아이에게 어려우니 걸렀지만,
+         여기서는 어려운 낱말이 곧 무기다. 이걸 막으면 AI가 헛되이 진다. */
+      const ok = [];
+      for (let i = 0; i < list.length; i++) {
+        if (cand[i] && cand[i].found && cand[i].noun) {
+          ok.push({ w: list[i], m: cand[i].def });
+        }
+      }
+      pick = await pickHell(ok, {
+        turn: Math.max(1, parseInt(body.turn, 10) || 1),
+        dueum: body.dueum !== false,
+        allowed, usedSet, level
+      });
+    } else {
+      pick = pickFrom(list, cand, deadEnd);
+    }
 
     const out = {
       valid,
@@ -399,7 +622,11 @@ export default async function handler(req, res) {
       aiWord: pick ? pick.w : '',
       aiMeaning: pick ? pick.m : '',
       aiStuck: !pick,
-      level: LEVEL_NAME[level] || ''
+      level: LEVEL_NAME[level] || '',
+      // 지옥 모드에서 한방 낱말을 꽂았는지 — 화면에서 알려 주려고 쓴다
+      aiKill: !!(pick && pick.kill),
+      // 학생이 이 낱말을 이을 수 있는 낱말 수. 0이면 학생이 진 것이다.
+      nextCount: pick ? reach(pick.w.charAt(pick.w.length - 1), body.dueum !== false) : 0
     };
     // 테스트에서 왜 막혔는지 보려고 쓴다. 화면에서는 쓰지 않는다.
     if (body.debug) {
