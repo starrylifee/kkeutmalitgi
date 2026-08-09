@@ -217,10 +217,20 @@ ${WORD_RULES}
 내보내기 전에 다시 확인하세요 — 다섯 낱말이 모두 ${H}(으)로 시작합니까?`;
 }
 
+/* 그냥 "쉬운 낱말"이라고 하면 모델은 늘 「사과」부터 떠올린다.
+   갈래를 하나 무작위로 정해 주면 시작 낱말이 다양해진다. */
+const TOPICS = [
+  '동물', '과일이나 채소', '학용품', '음식', '하늘·바다·산 같은 자연',
+  '탈것', '집 안에 있는 물건', '놀이나 운동', '몸의 한 부분', '학교에서 보는 것',
+  '옷이나 신발', '날씨', '나무나 꽃', '악기', '색깔이 있는 물건', '부엌에 있는 것'
+];
+
 function startPrompt({ level, used, deadEnd }) {
+  const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
   return `초등학교 국어 시간에 학생과 끝말잇기를 시작합니다.
 첫 낱말로 쓸 만한 낱말 다섯 개를 고르세요.
 
+- **${topic}**에 해당하는 낱말로 고르세요.
 - ${LEVEL[level] || LEVEL.g3}
 ${WORD_RULES}
 - 이미 나온 낱말은 빼세요: ${used.length ? used.join(', ') : '없음'}
@@ -257,7 +267,11 @@ function pickFrom(list, found, deadEnd) {
     const r = found[i];
     if (r && r.found && r.noun && r.common) ok.push({ w: list[i], m: r.def });
   }
-  return ok.find((c) => deadEnd.indexOf(c.w.charAt(c.w.length - 1)) === -1) || ok[0] || null;
+  if (!ok.length) return null;
+  // 늘 첫 번째를 고르면 같은 낱말만 나온다. 쓸 만한 것 중에서 아무거나 뽑는다.
+  const good = ok.filter((c) => deadEnd.indexOf(c.w.charAt(c.w.length - 1)) === -1);
+  const bag = good.length ? good : ok;
+  return bag[Math.floor(Math.random() * bag.length)];
 }
 
 // 낱말 목록을 사전에서 찾아 하나 고른다.
