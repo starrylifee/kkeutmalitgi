@@ -1,0 +1,238 @@
+/* 끝말잇기 — 폰 세로를 기준으로 짜고, 가로·데스크톱은 미디어쿼리 세 개로만 대응한다. */
+
+:root{
+  --bg:#F7F8FA;
+  --card:#FFFFFF;
+  --line:#E3E6EB;
+  --ink:#14181D;
+  --ink-2:#5B6470;
+  --ink-3:#8B939E;
+  --accent:#2563EB;
+  --accent-soft:#EAF0FE;
+  --warn:#B4442E;
+  --warn-soft:#FCEDE9;
+  --r:14px;
+  --fs-word:clamp(22px,6.4vw,34px);
+  --fs-badge:clamp(46px,15vw,88px);
+  --fs-body:clamp(15px,4vw,18px);
+  --vvh:100dvh;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+html,body{height:100%}
+
+body{
+  font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  font-size:var(--fs-body);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+  overflow:hidden;
+}
+
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg{width:1em;height:1em;fill:currentColor;display:block}
+
+/* ── 화면 전환 ───────────────────────────────── */
+.setup,.game{display:none}
+body[data-state="setup"] .setup{display:block}
+body:not([data-state="setup"]) .game{display:grid}
+
+/* ── 설정 화면 ───────────────────────────────── */
+.setup{
+  height:var(--vvh);
+  overflow-y:auto;
+  padding:max(28px,env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
+}
+.setup-inner{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.setup-title{font-size:clamp(30px,8vw,42px);font-weight:800;letter-spacing:-.03em;margin-top:8px}
+.setup-sub{color:var(--ink-2);margin-top:-14px}
+
+.opt{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.opt-head{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.opt-label{font-weight:700}
+.opt-desc{font-size:.82em;color:var(--ink-3);line-height:1.4}
+
+.seg{display:flex;gap:6px;background:#EFF1F4;border-radius:10px;padding:4px}
+.seg button{
+  flex:1;padding:11px 4px;border-radius:7px;font-weight:600;font-size:.94em;
+  color:var(--ink-2);transition:background .12s,color .12s;
+}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+.btn-primary{
+  background:var(--accent);color:#fff;font-weight:700;
+  border-radius:12px;padding:17px;width:100%;min-height:56px;
+}
+.btn-primary:active{background:#1D4FD0}
+.btn-primary:disabled{background:#B7C4DC;cursor:default}
+.btn-ghost{
+  border:1px solid var(--line);background:var(--card);border-radius:12px;
+  padding:17px;font-weight:600;color:var(--ink-2);min-height:56px;
+}
+.setup-note{font-size:.82em;color:var(--ink-3);text-align:center;min-height:1.2em}
+
+/* ── 게임 화면 ───────────────────────────────── */
+.game{
+  height:var(--vvh);
+  grid-template-rows:auto minmax(0,1fr) auto auto;
+  padding-top:env(safe-area-inset-top);
+}
+
+.hd{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card);
+}
+.hd-btn{font-size:22px;color:var(--ink-3);padding:4px}
+.hd-title{font-weight:700;flex:1;text-align:center;letter-spacing:-.02em}
+.hd-count{
+  font-size:.8em;font-weight:700;color:var(--accent);
+  background:var(--accent-soft);border-radius:999px;padding:4px 11px;min-width:38px;text-align:center;
+}
+
+/* 진행 기록 */
+.chain{overflow-y:auto;overscroll-behavior:contain;padding:14px 16px 6px;display:flex;flex-direction:column;gap:8px}
+.turn{display:flex;flex-direction:column;max-width:86%;animation:pop .18s ease-out}
+.turn.me{align-self:flex-end;align-items:flex-end}
+.turn.ai{align-self:flex-start;align-items:flex-start}
+.turn-who{font-size:.72em;color:var(--ink-3);margin-bottom:3px;padding:0 4px}
+.turn-word{
+  font-size:var(--fs-word);font-weight:700;letter-spacing:-.02em;
+  padding:9px 16px;border-radius:var(--r);background:var(--card);border:1px solid var(--line);
+}
+.turn.ai .turn-word{background:var(--accent-soft);border-color:#D3E0FC;color:#123A8C}
+.turn-mean{font-size:.78em;color:var(--ink-3);margin-top:4px;padding:0 4px;line-height:1.4}
+.turn.pending{opacity:.5}
+.turn.reject .turn-word{background:var(--warn-soft);border-color:#F2D3CA;color:var(--warn)}
+.turn.thinking .turn-word{color:var(--ink-3);font-size:1rem;font-weight:600}
+
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes shake{0%,100%{transform:none}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.shake{animation:shake .12s ease-in-out 2}
+
+/* 이어갈 글자 */
+.focus{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 16px 10px}
+.badge-wrap{display:flex;flex-direction:column;align-items:center}
+.badge{
+  font-size:var(--fs-badge);font-weight:800;letter-spacing:-.04em;line-height:1.05;
+  color:var(--accent);
+}
+.badge-alt{font-size:.82em;color:var(--ink-3);min-height:1.2em}
+.focus-msg{font-size:.86em;color:var(--ink-2);text-align:center;min-height:1.3em}
+
+.timer{display:flex;align-items:center;gap:9px;width:min(320px,80%)}
+.timer-bar{flex:1;height:6px;background:#E3E6EB;border-radius:99px;overflow:hidden}
+.timer-bar i{display:block;height:100%;width:100%;background:var(--accent);border-radius:99px;transition:width .25s linear}
+.timer.low .timer-bar i{background:var(--warn)}
+.timer-num{font-size:.86em;font-weight:700;color:var(--ink-2);min-width:2ch;text-align:right}
+.timer.low .timer-num{color:var(--warn)}
+
+/* 입력 바 */
+.bar{
+  display:flex;align-items:center;justify-content:space-around;gap:12px;
+  padding:12px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line);background:var(--card);
+}
+.bar-btn{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:.76em;color:var(--ink-2);font-weight:600;min-width:56px;min-height:56px;
+  justify-content:center;border-radius:12px;
+}
+.bar-btn svg{font-size:23px}
+.mic{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  width:96px;height:96px;border-radius:50%;background:var(--accent);color:#fff;
+  box-shadow:0 2px 10px rgba(37,99,235,.28);flex:none;
+}
+.mic svg{font-size:32px}
+.mic-label{font-size:.72rem;font-weight:600}
+.mic:active{background:#1D4FD0}
+.mic.rec{background:var(--warn);animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 2px 10px rgba(180,68,46,.3)}50%{box-shadow:0 2px 22px rgba(180,68,46,.55)}}
+
+/* AI 차례·판정 중에는 입력을 막는다 (AI 목소리를 마이크가 주워 먹는 것도 함께 막힌다) */
+body[data-state="ai"] .bar,
+body[data-state="judging"] .bar,
+body[data-state="booting"] .bar{pointer-events:none;opacity:.38}
+body[data-state="booting"] .focus .badge{color:var(--ink-3)}
+
+body.no-stt .mic{display:none}
+body.no-stt .bar{justify-content:center;gap:28px}
+body.no-stt .bar-btn{min-width:96px}
+
+/* ── 모달 ───────────────────────────────────── */
+.modal{
+  position:fixed;inset:0;background:rgba(20,24,29,.45);
+  display:flex;align-items:center;justify-content:center;padding:20px;z-index:20;
+}
+.modal[hidden]{display:none}
+.modal-box{
+  background:var(--card);border-radius:16px;padding:22px 20px;
+  width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;
+  animation:pop .16s ease-out;
+}
+.modal-title{font-weight:700;font-size:1.02em}
+.modal-input{
+  font:inherit;font-size:clamp(26px,8vw,38px);font-weight:700;text-align:center;letter-spacing:-.02em;
+  padding:14px;border:2px solid var(--line);border-radius:12px;width:100%;background:#FBFCFD;color:var(--ink);
+}
+.modal-input:focus{outline:none;border-color:var(--accent);background:#fff}
+.alts{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
+.alts:empty{display:none}
+.alts button{
+  border:1px solid var(--line);border-radius:999px;padding:8px 15px;
+  font-size:.88em;font-weight:600;color:var(--ink-2);background:var(--card);
+}
+.alts button:active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.modal-hint{font-size:.82em;color:var(--ink-3);text-align:center;min-height:1.2em}
+.modal-btns{display:flex;gap:10px}
+.modal-btns>*{flex:1}
+.hint-body{font-size:1.02em;line-height:1.6;color:var(--ink);white-space:pre-line;min-height:3em}
+
+/* ── 토스트 ─────────────────────────────────── */
+.toast{
+  position:fixed;left:50%;bottom:calc(126px + env(safe-area-inset-bottom));transform:translate(-50%,10px);
+  background:#14181D;color:#fff;padding:12px 18px;border-radius:12px;
+  font-size:.9em;font-weight:600;max-width:min(88vw,420px);text-align:center;
+  opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:30;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast.warn{background:var(--warn)}
+
+/* ── 폰 가로: 헤더를 접고 2단으로 ─────────────── */
+@media (max-height:520px) and (orientation:landscape){
+  .hd{display:none}
+  .game{grid-template-columns:1fr minmax(220px,38%);grid-template-rows:minmax(0,1fr) auto}
+  .chain{grid-row:1/3;padding:10px 12px}
+  .focus{padding:8px 12px 0}
+  .bar{border-top:0;border-left:1px solid var(--line);padding:8px 12px}
+  .mic{width:74px;height:74px}
+  .mic svg{font-size:26px}
+  :root{--fs-badge:clamp(38px,9vh,60px)}
+  .toast{bottom:16px}
+}
+
+/* ── 태블릿·데스크톱·전자칠판: 스크롤 없이 한 화면 ── */
+@media (min-width:820px){
+  .game{
+    grid-template-columns:minmax(0,1fr) 400px;
+    grid-template-areas:"hd hd" "chain focus" "chain bar";
+    grid-template-rows:auto minmax(0,1fr) auto;
+    max-width:1180px;margin:0 auto;
+    border-left:1px solid var(--line);border-right:1px solid var(--line);background:var(--bg);
+  }
+  .hd{grid-area:hd}
+  .chain{grid-area:chain;border-right:1px solid var(--line);padding:20px 22px}
+  .focus{grid-area:focus;justify-content:center;padding:24px 22px 8px}
+  .bar{grid-area:bar;border-top:0;padding:14px 22px 26px}
+  :root{--fs-word:clamp(26px,2.2vw,34px)}
+  .turn{max-width:70%}
+  .toast{bottom:36px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}

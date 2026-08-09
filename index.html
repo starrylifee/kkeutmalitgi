@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>AI 끝말잇기 — 초등 국어</title>
+<meta name="description" content="말로 하는 끝말잇기. 학생이 말한 낱말을 AI가 알아듣고 이어 갑니다. 두음법칙과 난이도를 선생님이 정할 수 있어요.">
+<meta name="theme-color" content="#F7F8FA">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta property="og:title" content="AI 끝말잇기 — 초등 국어">
+<meta property="og:description" content="말로 하는 끝말잇기. 두음법칙·난이도를 선생님이 정할 수 있어요.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body data-state="setup">
+
+<!-- ── 설정 화면 ───────────────────────────────── -->
+<section class="setup" id="setupScreen">
+  <div class="setup-inner">
+    <h1 class="setup-title">끝말잇기</h1>
+    <p class="setup-sub">AI와 번갈아 낱말을 이어 가요. 이기고 지는 것은 없어요.</p>
+
+    <div class="opt">
+      <div class="opt-head">
+        <span class="opt-label">두음법칙</span>
+        <span class="opt-desc">「락」 다음에 「낙」으로 시작해도 인정할까요?</span>
+      </div>
+      <div class="seg" id="optDueum" role="group" aria-label="두음법칙">
+        <button type="button" data-val="on">쓴다</button>
+        <button type="button" data-val="off">안 쓴다</button>
+      </div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <span class="opt-label">AI 낱말 수준</span>
+        <span class="opt-desc">AI가 내는 낱말이 얼마나 어려울지 정해요.</span>
+      </div>
+      <div class="seg" id="optLevel" role="group" aria-label="AI 낱말 수준">
+        <button type="button" data-val="easy">쉬움</button>
+        <button type="button" data-val="normal">보통</button>
+        <button type="button" data-val="hard">어려움</button>
+      </div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-head">
+        <span class="opt-label">생각할 시간</span>
+        <span class="opt-desc">시간이 지나도 탈락하지 않아요. 힌트를 볼 수 있어요.</span>
+      </div>
+      <div class="seg" id="optTime" role="group" aria-label="생각할 시간">
+        <button type="button" data-val="0">무제한</button>
+        <button type="button" data-val="60">60초</button>
+        <button type="button" data-val="30">30초</button>
+        <button type="button" data-val="20">20초</button>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="startBtn" type="button">시작하기</button>
+    <p class="setup-note" id="setupNote"></p>
+  </div>
+</section>
+
+<!-- ── 게임 화면 ───────────────────────────────── -->
+<section class="game" id="gameScreen">
+  <header class="hd">
+    <button class="hd-btn" id="backBtn" type="button" aria-label="설정으로">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6a8.4 8.4 0 1 0 0 16.8 8.4 8.4 0 0 0 0-16.8Zm0 3.1a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 4.6c.6 0 1 .4 1 1v4.4a1 1 0 1 1-2 0V12.3c0-.6.4-1 1-1Z"/></svg>
+    </button>
+    <span class="hd-title">끝말잇기</span>
+    <span class="hd-count" id="roundCount">0</span>
+  </header>
+
+  <div class="chain" id="chain" aria-live="polite"></div>
+
+  <div class="focus">
+    <div class="badge-wrap">
+      <div class="badge" id="nextBadge">?</div>
+      <div class="badge-alt" id="nextAlt"></div>
+    </div>
+    <div class="timer" id="timer" hidden>
+      <div class="timer-bar"><i id="timerBar"></i></div>
+      <span class="timer-num" id="timerNum">0</span>
+    </div>
+    <p class="focus-msg" id="focusMsg">준비 중이에요</p>
+  </div>
+
+  <div class="bar">
+    <button class="bar-btn" id="hintBtn" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5a6.5 6.5 0 0 0-3.7 11.8c.5.4.8.9.9 1.5l.1.7h5.4l.1-.7c.1-.6.4-1.1.9-1.5A6.5 6.5 0 0 0 12 2.5ZM9.5 18.5h5v1a1.5 1.5 0 0 1-1.5 1.5h-2a1.5 1.5 0 0 1-1.5-1.5v-1Z"/></svg>
+      <span>힌트</span>
+    </button>
+    <button class="mic" id="micBtn" type="button" aria-label="말하기">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a3.2 3.2 0 0 0 3.2-3.2V5.7a3.2 3.2 0 1 0-6.4 0v5.6A3.2 3.2 0 0 0 12 14.5Zm5.8-3.4a.9.9 0 0 0-1.8 0 4 4 0 0 1-8 0 .9.9 0 0 0-1.8 0 5.8 5.8 0 0 0 4.9 5.7v2.1H9.4a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-2.1a5.8 5.8 0 0 0 4.9-5.7Z"/></svg>
+      <span class="mic-label" id="micLabel">말하기</span>
+    </button>
+    <button class="bar-btn" id="typeBtn" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h17c.6 0 1 .4 1 1v9c0 .6-.4 1-1 1h-17c-.6 0-1-.4-1-1v-9c0-.6.4-1 1-1Zm2.2 2.4v1.7h1.7V8.9H5.7Zm3.2 0v1.7h1.7V8.9H8.9Zm3.2 0v1.7h1.7V8.9h-1.7Zm3.2 0v1.7H17V8.9h-1.7Zm-6.4 3v1.7h1.7v-1.7H8.9Zm-3.2 0v1.7h1.7v-1.7H5.7Zm6.4 0v1.7h1.7v-1.7h-1.7Zm3.2 0v1.7H17v-1.7h-1.7ZM7.4 14.9v1.6h9.2v-1.6H7.4Z"/></svg>
+      <span>쓰기</span>
+    </button>
+  </div>
+</section>
+
+<!-- ── 확인 모달 ───────────────────────────────── -->
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+  <div class="modal-box">
+    <p class="modal-title" id="modalTitle">이렇게 말했나요?</p>
+    <input class="modal-input" id="modalInput" type="text" inputmode="text"
+           autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="10">
+    <div class="alts" id="modalAlts"></div>
+    <p class="modal-hint" id="modalHint"></p>
+    <div class="modal-btns">
+      <button class="btn-ghost" id="modalCancel" type="button">다시</button>
+      <button class="btn-primary" id="modalOk" type="button">이걸로 할래요</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 힌트 / 막힘 패널 ─────────────────────────── -->
+<div class="modal" id="hintModal" role="dialog" aria-modal="true" aria-labelledby="hintTitle" hidden>
+  <div class="modal-box">
+    <p class="modal-title" id="hintTitle">힌트</p>
+    <p class="hint-body" id="hintBody">생각 중이에요…</p>
+    <div class="modal-btns">
+      <button class="btn-ghost" id="hintClose" type="button">닫기</button>
+      <button class="btn-primary" id="hintMore" type="button">더 알려 주세요</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/hangul.js?v=1"></script>
+<script src="js/speech.js?v=1"></script>
+<script src="js/api.js?v=1"></script>
+<script src="js/game.js?v=1"></script>
+</body>
+</html>
