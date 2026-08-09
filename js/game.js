@@ -40,6 +40,9 @@
     modalHint: $('modalHint'),
     modalOk: $('modalOk'),
     modalCancel: $('modalCancel'),
+    modalAuto: $('modalAuto'),
+    modalAutoBar: $('modalAutoBar'),
+    modalAutoNum: $('modalAutoNum'),
     hintModal: $('hintModal'),
     hintBody: $('hintBody'),
     hintClose: $('hintClose'),
@@ -368,6 +371,46 @@
 
   /* ── 확인 모달 ───────────────────────────── */
 
+  /* 말로 넣었으면 3초 세고 저절로 제출한다. 매번 버튼을 누르는 게 번거롭기 때문이다.
+     모달 안을 건드리는 순간(고치려는 뜻이므로) 세기를 멈춘다. */
+  var AUTO_SEC = 3;
+  var autoId = null;
+  var autoLeft = 0;
+
+  function startAuto() {
+    stopAuto();
+    autoLeft = AUTO_SEC;
+    el.modalAuto.hidden = false;
+    el.modalAutoNum.textContent = String(autoLeft);
+    el.modalAutoBar.style.transition = 'none';
+    el.modalAutoBar.style.width = '100%';
+    el.modalHint.textContent = '가만히 두면 저절로 제출돼요. 고치려면 낱말을 눌러 보세요.';
+    // 다음 그림 그릴 때부터 줄어들게 한다
+    requestAnimationFrame(function () {
+      el.modalAutoBar.style.transition = 'width 1s linear';
+      el.modalAutoBar.style.width = ((autoLeft - 1) / AUTO_SEC * 100) + '%';
+    });
+    autoId = setInterval(function () {
+      autoLeft--;
+      if (autoLeft <= 0) { stopAuto(); el.modalOk.click(); return; }
+      el.modalAutoNum.textContent = String(autoLeft);
+      el.modalAutoBar.style.width = ((autoLeft - 1) / AUTO_SEC * 100) + '%';
+    }, 1000);
+  }
+
+  function stopAuto() {
+    clearInterval(autoId);
+    autoId = null;
+    el.modalAuto.hidden = true;
+  }
+
+  // 학생이 고치려고 손을 대면 세기를 멈춘다.
+  function cancelAuto() {
+    if (!autoId) return;
+    stopAuto();
+    el.modalHint.textContent = '고쳐서 제출하면 돼요.';
+  }
+
   function openModal(text, alts, focusInput) {
     pauseTimer();
     el.modalInput.value = H.normalize(text);
@@ -383,14 +426,18 @@
       el.modalAlts.appendChild(b);
     });
     el.modal.hidden = false;
+    stopAuto();
     if (focusInput) {
       // 키보드로 쓰기를 눌렀을 때만 포커스한다.
       // 음성 입력 뒤에 포커스하면 폰에서 키보드가 확인 화면을 덮어 버린다.
       setTimeout(function () { el.modalInput.focus(); el.modalInput.select(); }, 60);
+    } else if (el.modalInput.value) {
+      startAuto();   // 말로 넣었고 알아들은 낱말이 있으면 3초 뒤 저절로 제출
     }
   }
 
   function closeModal() {
+    stopAuto();
     el.modal.hidden = true;
     el.modalInput.blur();
   }
@@ -580,8 +627,15 @@
     if (state === S.STUDENT) toStudentTurnMsg();
   });
   el.modalInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); el.modalOk.click(); }
+    if (e.key === 'Enter') { e.preventDefault(); el.modalOk.click(); return; }
+    cancelAuto();
   });
+  // 낱말을 고치려고 손을 대면 저절로 제출되지 않게 멈춘다.
+  el.modalInput.addEventListener('pointerdown', cancelAuto);
+  el.modalInput.addEventListener('focus', cancelAuto);
+  el.modalInput.addEventListener('input', cancelAuto);
+  el.modalAlts.addEventListener('pointerdown', cancelAuto);
+  el.modalAuto.addEventListener('pointerdown', cancelAuto);
   el.modal.addEventListener('click', function (e) {
     if (e.target === el.modal) el.modalCancel.click();
   });

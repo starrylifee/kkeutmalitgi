@@ -217,6 +217,13 @@ body.no-stt .bar-btn{min-width:96px}
   font-size:.88em;font-weight:600;color:var(--ink-2);background:var(--card);
 }
 .alts button:active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+/* 말로 넣었을 때 3초 뒤 저절로 제출되는 것을 보여 준다 */
+.auto{display:flex;align-items:center;gap:10px}
+.auto[hidden]{display:none}
+.auto-bar{flex:1;height:6px;background:#E3E6EB;border-radius:99px;overflow:hidden}
+.auto-bar i{display:block;height:100%;width:100%;background:var(--accent);border-radius:99px;transition:width 1s linear}
+.auto-num{font-size:1.05em;font-weight:800;color:var(--accent);min-width:1.4ch;text-align:right}
+
 .modal-hint{font-size:.82em;color:var(--ink-3);text-align:center;min-height:1.2em}
 .modal-btns{display:flex;gap:10px}
 .modal-btns>*{flex:1}
