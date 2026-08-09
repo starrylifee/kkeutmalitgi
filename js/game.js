@@ -58,6 +58,7 @@
   var used = new Set();
   var pendingNode = null;
   var thinkNode = null;
+  var turns = 0;   // 이번 판에서 주고받은 낱말 수
   var sttFails = 0;
 
   var timerId = null, timeLeft = 0, timerTotal = 0, timerPaused = false;
@@ -161,8 +162,9 @@
     var node = makeTurnNode(t);
     el.chain.appendChild(node);
     scrollChain();
-    if (!t.think) {
-      el.roundCount.textContent = String(chain.filter(function (x) { return !x.think && !x.reject; }).length);
+    if (!t.think && !t.pending) {
+      turns++;
+      el.roundCount.textContent = String(turns);
     }
     return node;
   }
@@ -216,6 +218,7 @@
 
     chain = [];
     used = new Set();
+    turns = 0;
     el.chain.innerHTML = '';
     el.roundCount.textContent = '0';
     sttFails = 0;
@@ -272,16 +275,20 @@
   }
 
   /* 아무도 이을 수 없는 글자에 걸렸을 때. 승패가 없으니 새 낱말로 다시 이어 간다.
-     이미 나온 낱말은 그대로 기억해 두어 같은 낱말이 또 나오지 않게 한다. */
+     새 판이므로 이미 나온 낱말 목록을 비운다 — 앞 판에서 썼던 낱말도 다시 쓸 수 있다.
+     지나간 낱말은 화면에는 그대로 남겨 두어 무엇을 했는지 볼 수 있게 한다. */
   function restartChain(msg) {
     stopTimer();
     el.focusMsg.textContent = msg;
     toast(msg);
     SP.speak(msg, function () {
       setState(S.BOOTING);
-      pushDivider('새 낱말로 다시 시작');
+      pushDivider('새 판 — 앞에서 쓴 낱말도 다시 쓸 수 있어요');
+      used = new Set();
+      turns = 0;
+      el.roundCount.textContent = '0';
       el.focusMsg.textContent = 'AI가 새 낱말을 고르고 있어요';
-      API.start({ level: settings.level, deadEnd: H.DEAD_END, used: Array.from(used) })
+      API.start({ level: settings.level, deadEnd: H.DEAD_END, used: [] })
         .then(function (res) { playAiTurn(res.aiWord, res.aiMeaning); })
         .catch(function () {
           chain = [];
@@ -353,7 +360,8 @@
         chain.forEach(function (t) { if (t.pending) t.pending = false; });
         pendingNode = null;
         used.add(word);
-        el.roundCount.textContent = String(chain.filter(function (x) { return !x.think; }).length);
+        turns++;                       // 학생 낱말은 인정된 뒤에 센다
+        el.roundCount.textContent = String(turns);
 
         if (res.aiStuck || !res.aiWord) { removeNode(thinkNode); thinkNode = null; onAiStuck(); return; }
         playAiTurn(res.aiWord, res.aiMeaning);
