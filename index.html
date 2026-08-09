@@ -20,7 +20,7 @@
 <link rel="apple-touch-icon" href="/favicon.svg">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body data-state="setup">
 
@@ -68,6 +68,40 @@
 
     <button class="btn-primary" id="startBtn" type="button">시작하기</button>
     <p class="setup-note" id="setupNote"></p>
+
+    <details class="info">
+      <summary>이렇게 놀아요</summary>
+      <ol class="rules">
+        <li>AI와 번갈아 낱말을 이어 갑니다. <b>이기고 지는 것은 없어요.</b></li>
+        <li>두 글자 이상 다섯 글자 이하, <b>이름을 나타내는 낱말</b>만 됩니다.
+            「먹다」 「빠르다」 「살짝」처럼 움직임이나 모양을 나타내는 말은 안 돼요.</li>
+        <li>낱말이 진짜 있는 말인지는 <b>국립국어원 표준국어대사전</b>에서 찾아 확인합니다.
+            사전에 없으면 알려 주고 다시 기회를 줍니다.</li>
+        <li>이미 나온 낱말은 다시 쓸 수 없어요. 이때도 탈락이 아니라 다시 기회를 줍니다.</li>
+        <li>두음법칙을 <b>쓴다</b>로 두면 「가락」 다음에 「낙엽」도 됩니다.
+            <b>안 쓴다</b>로 두면 「락」으로 시작하는 낱말만 됩니다.</li>
+        <li>시간이 다 되어도 탈락하지 않아요. 힌트가 세 단계로 나옵니다.</li>
+        <li>「구름」처럼 이을 낱말이 없는 낱말이 나오면 AI가 집니다.
+            그때는 새 낱말로 다시 시작해요.</li>
+      </ol>
+    </details>
+
+    <details class="info">
+      <summary>낱말은 어디서 가져오나요</summary>
+      <dl class="src">
+        <dt>낱말 판정과 뜻풀이</dt>
+        <dd><a href="https://stdict.korean.go.kr/openapi/openApiInfo.do" target="_blank" rel="noopener">국립국어원 표준국어대사전 오픈 API</a>
+            — 그 낱말이 사전에 실려 있는지, 품사가 무엇인지를 여기서 확인합니다.</dd>
+        <dt>AI가 내는 낱말</dt>
+        <dd>업스테이지 <b>Solar Pro 3</b> — 이어갈 낱말 후보를 만듭니다.
+            AI가 만든 낱말도 사전에서 확인한 뒤에만 화면에 나옵니다.</dd>
+        <dt>음성 인식과 읽어 주기</dt>
+        <dd>브라우저에 들어 있는 기능(Web Speech API)을 씁니다.
+            학생 목소리는 녹음하거나 저장하지 않습니다.</dd>
+      </dl>
+      <p class="src-note">AI에게 「이 말이 진짜 있느냐」를 묻지 않습니다.
+        물어보면 없는 낱말을 지어내기 때문에, 사실 판정은 사전에만 맡겼습니다.</p>
+    </details>
   </div>
 </section>
 
@@ -140,9 +174,9 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="js/hangul.js?v=3"></script>
-<script src="js/speech.js?v=3"></script>
-<script src="js/api.js?v=3"></script>
-<script src="js/game.js?v=3"></script>
+<script src="js/hangul.js?v=4"></script>
+<script src="js/speech.js?v=4"></script>
+<script src="js/api.js?v=4"></script>
+<script src="js/game.js?v=4"></script>
 </body>
 </html>

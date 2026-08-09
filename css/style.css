@@ -75,6 +75,30 @@ body:not([data-state="setup"]) .game{display:grid}
 }
 .setup-note{font-size:.82em;color:var(--ink-3);text-align:center;min-height:1.2em}
 
+/* 규칙과 출처 — 처음 쓰는 선생님이 읽어 보는 곳 */
+.info{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.info+.info{margin-top:-8px}
+.info summary{
+  padding:15px 16px;font-weight:600;font-size:.94em;cursor:pointer;list-style:none;
+  display:flex;align-items:center;justify-content:space-between;color:var(--ink-2);
+}
+.info summary::-webkit-details-marker{display:none}
+.info summary::after{content:"+";font-size:1.2em;color:var(--ink-3);font-weight:400}
+.info[open] summary::after{content:"−"}
+.info[open] summary{border-bottom:1px solid var(--line);color:var(--ink)}
+.rules,.src{padding:14px 18px 16px;font-size:.88em;line-height:1.65;color:var(--ink-2)}
+.rules{padding-left:34px}
+.rules li+li{margin-top:8px}
+.rules b,.src b{color:var(--ink);font-weight:600}
+.src dt{font-weight:600;color:var(--ink);margin-top:12px}
+.src dt:first-child{margin-top:0}
+.src dd{margin-top:2px}
+.src a{color:var(--accent)}
+.src-note{
+  padding:12px 18px 16px;font-size:.82em;line-height:1.6;color:var(--ink-3);
+  border-top:1px solid var(--line);background:#FBFCFD;
+}
+
 /* ── 게임 화면 ───────────────────────────────── */
 .game{
   height:var(--vvh);
