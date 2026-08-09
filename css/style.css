@@ -307,3 +307,6 @@ body.no-stt .bar-btn{min-width:96px}
 .turn.ai .turn-word.kill,.turn.kill .turn-word{
   background:var(--warn-soft);border-color:#F2D3CA;color:var(--warn);
 }
+
+/* 힌트는 한 판에 한 번 — 다 쓰면 흐리게 */
+.bar-btn.spent{opacity:.4}

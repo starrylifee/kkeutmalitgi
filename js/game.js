@@ -59,7 +59,8 @@
   var used = new Set();
   var pendingNode = null;
   var thinkNode = null;
-  var turns = 0;   // 이번 판에서 주고받은 낱말 수
+  var turns = 0;       // 이번 판에서 주고받은 낱말 수
+  var hintsLeft = 1;   // 힌트는 한 판에 한 번. 새 판이 시작되면 다시 채워진다.
   var sttFails = 0;
 
   var timerId = null, timeLeft = 0, timerTotal = 0, timerPaused = false;
@@ -126,6 +127,18 @@
   // 지옥에서는 힌트를 주지 않는다. 화면에서 버튼을 감추는 것도 CSS가 이걸 보고 한다.
   function isHell() {
     return settings.level === 'hell' || settings.level === 'inferno';
+  }
+
+  // 새 판이 시작될 때마다 힌트를 다시 채운다.
+  function resetHints() {
+    hintsLeft = 1;
+    paintHintBtn();
+  }
+
+  function paintHintBtn() {
+    el.hintBtn.classList.toggle('spent', hintsLeft <= 0);
+    var label = el.hintBtn.querySelector('span');
+    if (label) label.textContent = hintsLeft > 0 ? '힌트' : '힌트 씀';
   }
 
   function lastWord() {
@@ -225,6 +238,14 @@
       startTimer();
       return;
     }
+    if (hintsLeft <= 0) {
+      // 힌트를 이미 썼다. 시간만 다시 주고 스스로 생각하게 둔다.
+      var t = '시간이 다 됐어요. 힌트는 이미 썼으니 조금 더 생각해 볼까요?';
+      toast(t, 'warn');
+      SP.speak(t);
+      startTimer();
+      return;
+    }
     toast('시간이 다 됐어요. 힌트를 볼까요?');
     SP.speak('시간이 다 됐어요. 힌트를 볼까요?');
     openHint();
@@ -237,6 +258,7 @@
     requestWakeLock();
 
     el.body.dataset.level = settings.level;   // CSS가 지옥인지 보고 힌트 버튼을 감춘다
+    resetHints();
     chain = [];
     used = new Set();
     turns = 0;
@@ -329,6 +351,7 @@
       pushDivider('새 판 — 앞에서 쓴 낱말도 다시 쓸 수 있어요');
       used = new Set();
       turns = 0;
+      resetHints();
       el.roundCount.textContent = '0';
       el.focusMsg.textContent = 'AI가 새 낱말을 고르고 있어요';
       API.start({ level: settings.level, deadEnd: H.DEAD_END, dueum: settings.dueum, used: [] })
@@ -498,6 +521,12 @@
   /* ── 힌트 ───────────────────────────────── */
 
   function openHint() {
+    if (hintsLeft <= 0) {
+      toast('힌트는 한 판에 한 번이에요. 「포기」를 누르면 새 판이 시작돼요.', 'warn');
+      return;
+    }
+    hintsLeft--;
+    paintHintBtn();
     pauseTimer();
     hintData = null;
     hintStep = 0;
