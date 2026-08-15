@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.starrylifee.kkeutmalitgi",
+    "sha256_cert_fingerprints": ["C8:85:1D:F0:A3:3C:6B:60:22:82:37:DB:6E:85:F0:32:2B:97:6B:ED:18:C8:04:85:EC:55:6F:26:7D:59:FC:D9"]
+  }
+}]
