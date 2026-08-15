@@ -6,3 +6,10 @@ node_modules
 tools/.*-cache.json
 tools/*.log
 tools/report.txt
+
+# 플레이스토어 패키징 산출물 (APK/AAB/서명키 — 푸시 금지)
+play-package/
+*.apk
+*.aab
+*.keystore
+*.jks
